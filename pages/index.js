@@ -6,6 +6,7 @@ export default function GeoAlarmApp() {
   const [darkMode, setDarkMode] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [audioInitialized, setAudioInitialized] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [map, setMap] = useState(null);
   const [userMarker, setUserMarker] = useState(null);
@@ -189,6 +190,34 @@ export default function GeoAlarmApp() {
     requestLocationAccess();
   }, []);
 
+  // Initialize audio on first user interaction (mobile requirement)
+  const initializeAudio = async () => {
+    if (audioInitialized || !soundEnabled) return;
+    
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        const audioContext = new AudioContextClass();
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+        
+        // Test voice synthesis
+        if ('speechSynthesis' in window) {
+          const testUtterance = new SpeechSynthesisUtterance('');
+          testUtterance.volume = 0.01;
+          speechSynthesis.speak(testUtterance);
+        }
+        
+        setAudioInitialized(true);
+        console.log('Audio initialized successfully');
+      }
+    } catch (error) {
+      console.log('Audio initialization failed:', error);
+    }
+  };
+
+  // Request location access function
   const requestLocationAccess = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by this browser');
@@ -249,6 +278,7 @@ export default function GeoAlarmApp() {
         options
       );
 
+      // Store watchId for cleanup
       return () => {
         if (watchId) navigator.geolocation.clearWatch(watchId);
       };
@@ -284,42 +314,20 @@ export default function GeoAlarmApp() {
       // Get alarm name safely
       const alarmName = alarms[index]?.name || 'Unknown Location';
       
-      // Play sound with mobile compatibility
-      if (soundEnabled && typeof window !== 'undefined') {
-        try {
-          // Check if AudioContext is available and not suspended
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          if (AudioContextClass) {
-            const audioContext = new AudioContextClass();
-            
-            // Resume context if suspended (required on mobile)
-            if (audioContext.state === 'suspended') {
-              audioContext.resume().then(() => {
-                playAlarmSound(audioContext);
-              }).catch(err => {
-                console.log("Could not resume audio context:", err);
-                playFallbackSound();
-              });
-            } else {
-              playAlarmSound(audioContext);
-            }
-          } else {
-            playFallbackSound();
-          }
-        } catch (audioError) {
-          console.log("Audio playback failed:", audioError);
-          playFallbackSound();
-        }
+      // Play voice alert instead of popup
+      if (soundEnabled) {
+        playVoiceAlert(alarmName);
       }
 
-      // Show notification with error handling
+      // Show notification (but no popup alert)
       try {
         if (typeof window !== 'undefined' && 'Notification' in window) {
           if (Notification.permission === 'granted') {
             new Notification('🚨 Geo-Alarm Triggered!', {
               body: `You're near: ${alarmName}`,
-              icon: '/favicon.ico', // Add icon if available
-              tag: `alarm-${index}` // Prevent duplicate notifications
+              icon: '/favicon.ico',
+              tag: `alarm-${index}`,
+              requireInteraction: false // Don't require user to dismiss
             });
           }
         }
@@ -327,32 +335,69 @@ export default function GeoAlarmApp() {
         console.log("Notification failed:", notificationError);
       }
 
-      // Show alert with mobile-friendly message
-      setTimeout(() => {
-        try {
-          alert(`🚨 Geo-Alarm triggered!\n\nYou're near: ${alarmName}`);
-        } catch (alertError) {
-          console.log("Alert failed:", alertError);
-        }
-      }, 100); // Small delay to ensure state update
+      // NO POPUP ALERT - Only voice and visual feedback
 
     } catch (error) {
       console.error("Error in triggerAlarm:", error);
-      // Fallback alert
-      try {
-        alert("🚨 Geo-Alarm triggered!");
-      } catch (fallbackError) {
-        console.error("Fallback alert also failed:", fallbackError);
-      }
     }
   }
 
-  // Helper function to play alarm sound
-  function playAlarmSound(audioContext) {
+  // New function for voice alerts
+  function playVoiceAlert(alarmName) {
     try {
-      // Play the sound 3 times with delays
+      // Method 1: Speech Synthesis (works best on mobile)
+      if ('speechSynthesis' in window) {
+        // Stop any ongoing speech
+        speechSynthesis.cancel();
+        
+        // Play voice alert 3 times
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => {
+            const utterance = new SpeechSynthesisUtterance(`Alarm triggered. You have reached ${alarmName}`);
+            utterance.rate = 1.2;
+            utterance.volume = 1.0;
+            utterance.pitch = 1.0;
+            speechSynthesis.speak(utterance);
+          }, i * 2000); // 2 second delay between each announcement
+        }
+      }
+      
+      // Method 2: Backup sound (beeps)
+      setTimeout(() => {
+        playBackupSound();
+      }, 500);
+      
+    } catch (error) {
+      console.log("Voice alert failed:", error);
+      playBackupSound();
+    }
+  }
+
+  // Backup sound method
+  function playBackupSound() {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        const audioContext = new AudioContextClass();
+        
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().then(() => {
+            playBeepSequence(audioContext);
+          });
+        } else {
+          playBeepSequence(audioContext);
+        }
+      }
+    } catch (error) {
+      console.log("Backup sound failed:", error);
+    }
+  }
+
+  function playBeepSequence(audioContext) {
+    try {
+      // Play 3 urgent beeps
       for (let i = 0; i < 3; i++) {
-        const startTime = audioContext.currentTime + (i * 0.8); // 0.8 second delay between sounds
+        const startTime = audioContext.currentTime + (i * 0.6);
         
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
@@ -360,36 +405,16 @@ export default function GeoAlarmApp() {
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
         
-        oscillator.frequency.setValueAtTime(800, startTime);
-        gainNode.gain.setValueAtTime(0.3, startTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.5);
+        // Higher frequency for urgency
+        oscillator.frequency.setValueAtTime(1200, startTime);
+        gainNode.gain.setValueAtTime(0.5, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.4);
         
         oscillator.start(startTime);
-        oscillator.stop(startTime + 0.5);
+        oscillator.stop(startTime + 0.4);
       }
     } catch (error) {
-      console.log("Oscillator sound failed:", error);
-      playFallbackSound();
-    }
-  }
-
-  // Fallback sound for when Web Audio API fails
-  function playFallbackSound() {
-    try {
-      // Try to create a simple beep using HTML5 audio - play 3 times
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        for (let i = 0; i < 3; i++) {
-          setTimeout(() => {
-            const utterance = new SpeechSynthesisUtterance('Alarm');
-            utterance.rate = 2;
-            utterance.volume = 0.3;
-            utterance.pitch = 1.5;
-            window.speechSynthesis.speak(utterance);
-          }, i * 600); // 600ms delay between each speech
-        }
-      }
-    } catch (error) {
-      console.log("Fallback sound also failed:", error);
+      console.log("Beep sequence failed:", error);
     }
   }
 
@@ -522,7 +547,16 @@ export default function GeoAlarmApp() {
                 onClick={requestLocationAccess}
                 className="location-btn"
               >
-                📍 Enable Location Access
+                📍 Enable Location & Audio
+              </button>
+            )}
+            
+            {!audioInitialized && isTracking && soundEnabled && (
+              <button 
+                onClick={initializeAudio}
+                className="audio-btn"
+              >
+                🔊 Enable Sound Alerts
               </button>
             )}
           </div>
@@ -834,6 +868,24 @@ export default function GeoAlarmApp() {
 
           .location-btn:hover {
             background: #2563eb;
+          }
+
+          .audio-btn {
+            margin-top: 8px;
+            width: 100%;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: #f59e0b;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+
+          .audio-btn:hover {
+            background: #d97706;
           }
 
           .status-indicator {
@@ -1276,10 +1328,8 @@ export default function GeoAlarmApp() {
           .dark :global(.leaflet-popup-tip) {
             background: #374151 !important;
           }
-          .dark :global(.leaflet-popup-content a) {
-            color: #3b82f6 !important;
-          }
-        `}</style>
+        `}
+      </style>
       </div>
     </>
   );
