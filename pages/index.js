@@ -183,6 +183,18 @@ export default function GeoAlarmApp() {
   useEffect(() => {
     if (!navigator.geolocation) return;
 
+    // Don't auto-request location on mobile - wait for user interaction
+    if (window.innerWidth <= 768) return;
+
+    requestLocationAccess();
+  }, []);
+
+  const requestLocationAccess = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by this browser');
+      return;
+    }
+
     setIsTracking(true);
     
     const options = {
@@ -191,81 +203,208 @@ export default function GeoAlarmApp() {
       maximumAge: 30000
     };
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const newLocation = [position.coords.latitude, position.coords.longitude];
-        setUserLocation(newLocation);
-        setIsTracking(true);
-      },
-      (error) => {
-        console.error("Geolocation error:", error);
-        setIsTracking(false);
-      },
-      options
-    );
-
-    return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
-    };
-  }, []);
-
-  // Check for alarm triggers
-  useEffect(() => {
-    if (!userLocation) return;
-    
-    alarms.forEach((alarm, index) => {
-      if (!alarm.triggered) {
-        const distance = getDistance(userLocation, alarm.location);
-        if (distance < alarm.radius) {
-          triggerAlarm(index);
+    const successCallback = (position) => {
+      try {
+        if (position && position.coords) {
+          const newLocation = [position.coords.latitude, position.coords.longitude];
+          setUserLocation(newLocation);
+          setIsTracking(true);
         }
+      } catch (error) {
+        console.error("Error processing location:", error);
+        setIsTracking(false);
       }
-    });
+    };
+
+    const errorCallback = (error) => {
+      console.error("Geolocation error:", error);
+      setIsTracking(false);
+      
+      // Show user-friendly error messages
+      let errorMessage = "Unable to get your location. ";
+      try {
+        switch(error.code) {
+          case 1: // PERMISSION_DENIED
+            errorMessage += "Please enable location access in your browser settings.";
+            break;
+          case 2: // POSITION_UNAVAILABLE
+            errorMessage += "Location information is unavailable.";
+            break;
+          case 3: // TIMEOUT
+            errorMessage += "Location request timed out.";
+            break;
+          default:
+            errorMessage += "An unknown error occurred.";
+        }
+        alert(errorMessage);
+      } catch (alertError) {
+        console.error("Error showing location error message:", alertError);
+      }
+    };
+
+    try {
+      const watchId = navigator.geolocation.watchPosition(
+        successCallback,
+        errorCallback,
+        options
+      );
+
+      return () => {
+        if (watchId) navigator.geolocation.clearWatch(watchId);
+      };
+    } catch (error) {
+      console.error("Error setting up geolocation watch:", error);
+      setIsTracking(false);
+    }
+  };
+
+  // Check for alarm triggers with better error handling
+  useEffect(() => {
+    if (!userLocation || !Array.isArray(alarms) || alarms.length === 0) return;
+    
+    try {
+      alarms.forEach((alarm, index) => {
+        if (alarm && !alarm.triggered && alarm.location && Array.isArray(alarm.location)) {
+          const distance = getDistance(userLocation, alarm.location);
+          if (distance < (alarm.radius || 200)) {
+            triggerAlarm(index);
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error checking alarm triggers:", error);
+    }
   }, [userLocation, alarms]);
 
   function triggerAlarm(index) {
-    setAlarms(prev => prev.map((a, i) => (i === index ? { ...a, triggered: true } : a)));
-    
-    // Play sound
-    if (soundEnabled) {
+    try {
+      // Update alarm state first
+      setAlarms(prev => prev.map((a, i) => (i === index ? { ...a, triggered: true } : a)));
+      
+      // Get alarm name safely
+      const alarmName = alarms[index]?.name || 'Unknown Location';
+      
+      // Play sound with mobile compatibility
+      if (soundEnabled && typeof window !== 'undefined') {
+        try {
+          // Check if AudioContext is available and not suspended
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            const audioContext = new AudioContextClass();
+            
+            // Resume context if suspended (required on mobile)
+            if (audioContext.state === 'suspended') {
+              audioContext.resume().then(() => {
+                playAlarmSound(audioContext);
+              }).catch(err => {
+                console.log("Could not resume audio context:", err);
+                playFallbackSound();
+              });
+            } else {
+              playAlarmSound(audioContext);
+            }
+          } else {
+            playFallbackSound();
+          }
+        } catch (audioError) {
+          console.log("Audio playback failed:", audioError);
+          playFallbackSound();
+        }
+      }
+
+      // Show notification with error handling
       try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.5);
-      } catch (error) {
-        console.log("Audio playback failed");
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            new Notification('🚨 Geo-Alarm Triggered!', {
+              body: `You're near: ${alarmName}`,
+              icon: '/favicon.ico', // Add icon if available
+              tag: `alarm-${index}` // Prevent duplicate notifications
+            });
+          }
+        }
+      } catch (notificationError) {
+        console.log("Notification failed:", notificationError);
+      }
+
+      // Show alert with mobile-friendly message
+      setTimeout(() => {
+        try {
+          alert(`🚨 Geo-Alarm triggered!\n\nYou're near: ${alarmName}`);
+        } catch (alertError) {
+          console.log("Alert failed:", alertError);
+        }
+      }, 100); // Small delay to ensure state update
+
+    } catch (error) {
+      console.error("Error in triggerAlarm:", error);
+      // Fallback alert
+      try {
+        alert("🚨 Geo-Alarm triggered!");
+      } catch (fallbackError) {
+        console.error("Fallback alert also failed:", fallbackError);
       }
     }
+  }
 
-    // Show notification
-    if (Notification.permission === 'granted') {
-      new Notification('🚨 Geo-Alarm Triggered!', {
-        body: `You're near: ${alarms[index].name}`
-      });
+  // Helper function to play alarm sound
+  function playAlarmSound(audioContext) {
+    try {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.log("Oscillator sound failed:", error);
+      playFallbackSound();
     }
+  }
 
-    alert(`🚨 Geo-Alarm triggered near: ${alarms[index].name}`);
+  // Fallback sound for when Web Audio API fails
+  function playFallbackSound() {
+    try {
+      // Try to create a simple beep using HTML5 audio
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        // Use speech synthesis as audio fallback (works on most mobiles)
+        const utterance = new SpeechSynthesisUtterance('Alarm triggered');
+        utterance.rate = 0.1;
+        utterance.volume = 0.1;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (error) {
+      console.log("Fallback sound also failed:", error);
+    }
   }
 
   function getDistance(loc1, loc2) {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = (loc1[0] * Math.PI) / 180;
-    const φ2 = (loc2[0] * Math.PI) / 180;
-    const Δφ = ((loc2[0] - loc1[0]) * Math.PI) / 180;
-    const Δλ = ((loc2[1] - loc1[1]) * Math.PI) / 180;
+    try {
+      if (!loc1 || !loc2 || !Array.isArray(loc1) || !Array.isArray(loc2)) {
+        console.warn("Invalid locations for distance calculation");
+        return Infinity; // Return large distance to avoid false triggers
+      }
 
-    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const R = 6371e3; // Earth's radius in meters
+      const φ1 = (loc1[0] * Math.PI) / 180;
+      const φ2 = (loc2[0] * Math.PI) / 180;
+      const Δφ = ((loc2[0] - loc1[0]) * Math.PI) / 180;
+      const Δλ = ((loc2[1] - loc1[1]) * Math.PI) / 180;
+
+      const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      
+      return isNaN(distance) ? Infinity : distance;
+    } catch (error) {
+      console.error("Error calculating distance:", error);
+      return Infinity;
+    }
   }
 
   function handleMapClick(e) {
@@ -369,6 +508,14 @@ export default function GeoAlarmApp() {
               <div className="status-dot"></div>
               <span>{isTracking ? 'Location tracking active' : 'Location tracking disabled'}</span>
             </div>
+            {!isTracking && (
+              <button 
+                onClick={requestLocationAccess}
+                className="location-btn"
+              >
+                📍 Enable Location Access
+              </button>
+            )}
           </div>
 
           {/* Alarms */}
@@ -660,6 +807,24 @@ export default function GeoAlarmApp() {
 
           .dark .status-section {
             border-color: #334155;
+          }
+
+          .location-btn {
+            margin-top: 12px;
+            width: 100%;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: #3b82f6;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+
+          .location-btn:hover {
+            background: #2563eb;
           }
 
           .status-indicator {
@@ -1102,10 +1267,11 @@ export default function GeoAlarmApp() {
           .dark :global(.leaflet-popup-tip) {
             background: #374151 !important;
           }
-        
-
-
-        `}</style>      </div>
+          .dark :global(.leaflet-popup-content a) {
+            color: #3b82f6 !important;
+          }
+        `}</style>
+      </div>
     </>
   );
 }
