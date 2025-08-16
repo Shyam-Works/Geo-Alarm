@@ -350,18 +350,23 @@ export default function GeoAlarmApp() {
   // Helper function to play alarm sound
   function playAlarmSound(audioContext) {
     try {
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
+      // Play the sound 3 times with delays
+      for (let i = 0; i < 3; i++) {
+        const startTime = audioContext.currentTime + (i * 0.8); // 0.8 second delay between sounds
+        
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, startTime);
+        gainNode.gain.setValueAtTime(0.3, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.5);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + 0.5);
+      }
     } catch (error) {
       console.log("Oscillator sound failed:", error);
       playFallbackSound();
@@ -371,13 +376,17 @@ export default function GeoAlarmApp() {
   // Fallback sound for when Web Audio API fails
   function playFallbackSound() {
     try {
-      // Try to create a simple beep using HTML5 audio
+      // Try to create a simple beep using HTML5 audio - play 3 times
       if (typeof window !== 'undefined' && window.speechSynthesis) {
-        // Use speech synthesis as audio fallback (works on most mobiles)
-        const utterance = new SpeechSynthesisUtterance('Alarm triggered');
-        utterance.rate = 0.1;
-        utterance.volume = 0.1;
-        window.speechSynthesis.speak(utterance);
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => {
+            const utterance = new SpeechSynthesisUtterance('Alarm');
+            utterance.rate = 2;
+            utterance.volume = 0.3;
+            utterance.pitch = 1.5;
+            window.speechSynthesis.speak(utterance);
+          }, i * 600); // 600ms delay between each speech
+        }
       }
     } catch (error) {
       console.log("Fallback sound also failed:", error);
