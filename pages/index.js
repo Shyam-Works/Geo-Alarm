@@ -22,11 +22,14 @@ export default function GeoAlarmApp() {
   const [map, setMap] = useState(null);
   const [userMarker, setUserMarker] = useState(null);
   const [alarmMarkers, setAlarmMarkers] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  
+  // Mobile UI states
+  const [bottomSheetExpanded, setBottomSheetExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   
   // Background tracking states
   const [backgroundTrackingEnabled, setBackgroundTrackingEnabled] = useState(false);
@@ -37,6 +40,18 @@ export default function GeoAlarmApp() {
   const [database] = useState(() => new GeoAlarmDB());
   const [swManager] = useState(() => new ServiceWorkerManager());
   const [locationManager] = useState(() => new LocationManager());
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Initialize map when component mounts
   useEffect(() => {
@@ -61,7 +76,7 @@ export default function GeoAlarmApp() {
 
     const mapInstance = window.L.map('map', {
       zoomControl: true,
-      attributionControl: true
+      attributionControl: !isMobile // Hide attribution on mobile
     }).setView(userLocation, 13);
     
     mapInstance.zoomControl.setPosition('topright');
@@ -137,8 +152,8 @@ export default function GeoAlarmApp() {
   const startContinuousLocationTracking = () => {
     const options = {
       enableHighAccuracy: true,
-      timeout: 5000, // Reduced timeout for faster response
-      maximumAge: 10000 // Reduced to 10 seconds for more frequent updates
+      timeout: 5000,
+      maximumAge: 10000
     };
 
     const watchId = navigator.geolocation.watchPosition(
@@ -146,22 +161,18 @@ export default function GeoAlarmApp() {
         const newLocation = [position.coords.latitude, position.coords.longitude];
         const previousLocation = userLocation;
         
-        // Only update if location changed significantly (more than 5 meters)
         if (previousLocation && getDistance(previousLocation, newLocation) < 5) {
           return;
         }
         
         setUserLocation(newLocation);
         setLastLocationUpdate(Date.now());
-        
-        // Sync with service worker
         syncLocationWithServiceWorker(newLocation);
         
         console.log('Location updated:', newLocation, 'Accuracy:', position.coords.accuracy);
       },
       (error) => {
         console.error('Location tracking error:', error);
-        // Try to get location again with lower accuracy requirements
         if (error.code === error.TIMEOUT) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -169,7 +180,7 @@ export default function GeoAlarmApp() {
               setUserLocation(newLocation);
               setLastLocationUpdate(Date.now());
             },
-            () => {}, // Ignore errors on retry
+            () => {},
             { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
           );
         }
@@ -228,7 +239,7 @@ export default function GeoAlarmApp() {
     loadSavedData();
   }, [database]);
 
-  // Save alarms and sync with service worker - but avoid saving when alarms are being cleaned up
+  // Save alarms and sync with service worker
   useEffect(() => {
     if (!database || alarms.length === 0) return;
     
@@ -236,7 +247,6 @@ export default function GeoAlarmApp() {
       try {
         await database.saveAlarms(alarms);
         
-        // Sync alarms with service worker
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({
             type: 'SYNC_ALARMS',
@@ -248,8 +258,6 @@ export default function GeoAlarmApp() {
       }
     };
     
-    // Only auto-save if we have alarms (normal operation)
-    // Manual saves are handled in delete functions
     const hasActiveAlarms = alarms.some(alarm => !alarm.triggered || alarm.type === 'persistent');
     if (hasActiveAlarms) {
       saveAlarms();
@@ -275,18 +283,6 @@ export default function GeoAlarmApp() {
     
     saveSettings();
   }, [darkMode, soundEnabled, audioInitialized, backgroundTrackingEnabled, database]);
-
-  // Resize map when sidebar toggles (mobile) with better timing
-  useEffect(() => {
-    if (map) {
-      const timeoutId = setTimeout(() => {
-        map.invalidateSize();
-        map.getContainer().classList.toggle('sidebar-open', sidebarOpen);
-      }, 300);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [sidebarOpen, map]);
 
   // Update tile layer when dark mode changes
   useEffect(() => {
@@ -362,30 +358,26 @@ export default function GeoAlarmApp() {
     setAlarmMarkers(newMarkers);
   }, [alarms, map]);
 
-  // Enhanced alarm trigger checking with better mobile support
+  // Enhanced alarm trigger checking
   useEffect(() => {
     if (!userLocation || !Array.isArray(alarms) || alarms.length === 0) return;
     
     try {
-      // Clean up expired alarms first
       const now = new Date();
       const activeAlarms = alarms.filter(alarm => {
         if (alarm.expiresAt && new Date(alarm.expiresAt) < now) {
-          return false; // Remove expired alarm
+          return false;
         }
         return true;
       });
       
-      // Update alarms if any were removed due to expiration
       if (activeAlarms.length !== alarms.length) {
         setAlarms(activeAlarms);
         
-        // Save expired alarm cleanup to database immediately
         setTimeout(async () => {
           try {
             await database.saveAlarms(activeAlarms);
             
-            // Sync with service worker
             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
               navigator.serviceWorker.controller.postMessage({
                 type: 'SYNC_ALARMS',
@@ -399,7 +391,7 @@ export default function GeoAlarmApp() {
           }
         }, 100);
         
-        return; // Skip trigger checking this time, let it run again with cleaned alarms
+        return;
       }
       
       activeAlarms.forEach((alarm, index) => {
@@ -407,8 +399,7 @@ export default function GeoAlarmApp() {
           const distance = getDistance(userLocation, alarm.location);
           console.log(`Distance to ${alarm.name}: ${distance}m (threshold: ${alarm.radius}m)`);
           
-          // Add some buffer for mobile GPS accuracy issues
-          const triggerRadius = alarm.radius + 10; // Add 10m buffer
+          const triggerRadius = alarm.radius + 10;
           
           if (distance <= triggerRadius) {
             console.log(`Triggering alarm: ${alarm.name}`);
@@ -451,7 +442,6 @@ export default function GeoAlarmApp() {
         playVoiceAlert(alarmName);
       }
 
-      // Enhanced notification with better mobile support
       try {
         if (typeof window !== 'undefined' && 'Notification' in window) {
           if (Notification.permission === 'granted') {
@@ -460,11 +450,10 @@ export default function GeoAlarmApp() {
               icon: '/favicon.ico',
               tag: `alarm-${index}`,
               requireInteraction: true,
-              vibrate: [200, 100, 200, 100, 200], // Vibration pattern for mobile
+              vibrate: [200, 100, 200, 100, 200],
               silent: false
             });
 
-            // Auto-close notification after 10 seconds
             setTimeout(() => notification.close(), 10000);
           }
         }
@@ -472,22 +461,18 @@ export default function GeoAlarmApp() {
         console.log("Notification failed:", notificationError);
       }
 
-      // Vibration for mobile devices
       if ('vibrator' in navigator || 'vibrate' in navigator) {
         navigator.vibrate([200, 100, 200, 100, 200]);
       }
 
-      // Auto-delete one-time alarms after 3 seconds
       if (alarm.type === 'oneTime') {
         setTimeout(async () => {
           const newAlarms = alarms.filter((_, i) => i !== index);
           setAlarms(newAlarms);
           
-          // Immediately save to database and sync with service worker
           try {
             await database.saveAlarms(newAlarms);
             
-            // Sync with service worker
             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
               navigator.serviceWorker.controller.postMessage({
                 type: 'SYNC_ALARMS',
@@ -514,10 +499,8 @@ export default function GeoAlarmApp() {
     const radiusInput = prompt("Enter radius in meters (default: 200):");
     const radius = parseInt(radiusInput) || 200;
     
-    // Ask for alarm type
     const alarmType = confirm("One-time use alarm? (OK = Yes, Cancel = Persistent)") ? 'oneTime' : 'persistent';
     
-    // Ask for auto-expire time if persistent
     let expiresAt = null;
     if (alarmType === 'persistent') {
       const hours = prompt("Auto-delete after how many hours? (default: never, enter 0 for never):");
@@ -543,12 +526,10 @@ export default function GeoAlarmApp() {
       const newAlarms = alarms.filter((_, idx) => idx !== index);
       setAlarms(newAlarms);
       
-      // Immediately save to database and sync with service worker
       setTimeout(async () => {
         try {
           await database.saveAlarms(newAlarms);
           
-          // Sync with service worker
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({
               type: 'SYNC_ALARMS',
@@ -598,10 +579,6 @@ export default function GeoAlarmApp() {
     setSearchResults([]);
     setShowSearchResults(false);
     
-    if (window.innerWidth <= 768) {
-      setSidebarOpen(false);
-    }
-    
     setTimeout(() => {
       const createAlarm = confirm(`Create alarm at: ${display_name}?`);
       if (createAlarm) {
@@ -610,10 +587,8 @@ export default function GeoAlarmApp() {
           const radiusInput = prompt("Enter radius in meters (default: 200):");
           const radius = parseInt(radiusInput) || 200;
           
-          // Ask for alarm type
           const alarmType = confirm("One-time use alarm? (OK = Yes, Cancel = Persistent)") ? 'oneTime' : 'persistent';
           
-          // Ask for auto-expire time if persistent
           let expiresAt = null;
           if (alarmType === 'persistent') {
             const hours = prompt("Auto-delete after how many hours? (default: never, enter 0 for never):");
@@ -643,155 +618,388 @@ export default function GeoAlarmApp() {
     setShowSearchResults(false);
   };
 
-  const handleSidebarToggle = () => {
-    setSidebarOpen(!sidebarOpen);
-    
-    if (!sidebarOpen) {
-      setShowSearchResults(false);
-    }
+  const toggleBottomSheet = () => {
+    setBottomSheetExpanded(!bottomSheetExpanded);
   };
 
-  const handleSidebarClose = () => {
-    setSidebarOpen(false);
-    setShowSearchResults(false);
-  };
-
-  return (
-    <>
-      <link
-        rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-        crossOrigin=""
-      />
-
-      <div className={`${styles.appContainer} ${darkMode ? styles.dark : ''}`}>
-        {/* Mobile Menu Button */}
-        <button 
-          className={styles.mobileMenuBtn}
-          onClick={handleSidebarToggle}
-          aria-label="Toggle menu"
-        >
-          <span className={`${styles.hamburger} ${sidebarOpen ? styles.open : ''}`}>
-            <span></span>
-            <span></span>
-            <span></span>
-          </span>
-        </button>
-
-        {/* Sidebar Overlay (Mobile) */}
-        {sidebarOpen && <div className={styles.sidebarOverlay} onClick={handleSidebarClose} />}
-
-        {/* Sidebar */}
-        <div className={`${styles.sidebar} ${sidebarOpen ? styles.open : ''}`}>
-          {/* Mobile Close Button */}
-          <button 
-            className={styles.mobileCloseBtn}
-            onClick={handleSidebarClose}
-            aria-label="Close menu"
+  const renderDesktopSidebar = () => (
+    <div className={styles.sidebar}>
+      {/* Desktop Header */}
+      <div className={styles.sidebarHeader}>
+        <div className={styles.appTitle}>
+          <span className={styles.titleIcon}>🧭</span>
+          <h1>GeoAlarm</h1>
+        </div>
+        <div className={styles.headerControls}>
+          <button
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className={`${styles.controlBtn} ${soundEnabled ? styles.active : ''}`}
+            title="Toggle Sound"
           >
-            ✕
+            🔊
           </button>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={styles.controlBtn}
+            title="Toggle Theme"
+          >
+            {darkMode ? '☀️' : '🌙'}
+          </button>
+        </div>
+      </div>
 
-          {/* Header */}
-          <div className={styles.sidebarHeader}>
-            <div className={styles.appTitle}>
-              <span className={styles.titleIcon}>🧭</span>
-              <h1>GeoAlarm</h1>
-            </div>
-            <div className={styles.headerControls}>
+      {/* Desktop Search Section */}
+      <div className={styles.searchSection}>
+        <form onSubmit={handleSearch} className={styles.searchForm}>
+          <div className={styles.searchInputWrapper}>
+            <input
+              type="text"
+              placeholder="Search for places, addresses..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={styles.searchInput}
+            />
+            {searchQuery && (
               <button
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                className={`${styles.controlBtn} ${soundEnabled ? styles.active : ''}`}
-                title="Toggle Sound"
+                type="button"
+                onClick={clearSearch}
+                className={styles.clearSearchBtn}
               >
-                🔊
+                ✕
               </button>
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className={styles.controlBtn}
-                title="Toggle Theme"
-              >
-                {darkMode ? '☀️' : '🌙'}
-              </button>
-            </div>
+            )}
+            <button
+              type="submit"
+              disabled={isSearching || !searchQuery.trim()}
+              className={styles.searchBtn}
+            >
+              {isSearching ? '🔄' : '🔍'}
+            </button>
           </div>
-
-          {/* Search Section */}
-          <div className={styles.searchSection}>
-            <form onSubmit={handleSearch} className={styles.searchForm}>
-              <div className={styles.searchInputWrapper}>
-                <input
-                  type="text"
-                  placeholder="Search for places, addresses..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={styles.searchInput}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={clearSearch}
-                    className={styles.clearSearchBtn}
+        </form>
+        
+        {/* Desktop Search Results */}
+        {showSearchResults && (
+          <div className={styles.searchResults}>
+            {searchResults.length > 0 ? (
+              <>
+                <div className={styles.searchResultsHeader}>
+                  <span>Search Results</span>
+                  <button 
+                    onClick={() => setShowSearchResults(false)}
+                    className={styles.closeResultsBtn}
                   >
                     ✕
                   </button>
+                </div>
+                <div className={styles.searchResultsList}>
+                  {searchResults.map((result, index) => (
+                    <div
+                      key={index}
+                      onClick={() => selectSearchResult(result)}
+                      className={styles.searchResultItem}
+                    >
+                      <div className={styles.searchResultIcon}>📍</div>
+                      <div className={styles.searchResultText}>
+                        <div className={styles.searchResultName}>
+                          {result.display_name.split(',')[0]}
+                        </div>
+                        <div className={styles.searchResultAddress}>
+                          {result.display_name}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className={styles.noResults}>
+                <div>No results found</div>
+                <small>Try a different search term</small>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Status */}
+      <div className={styles.statusSection}>
+        <div className={`${styles.statusIndicator} ${isTracking ? styles.active : styles.inactive}`}>
+          <div className={styles.statusDot}></div>
+          <span>
+            {isTracking ? 'Location tracking active' : 'Location tracking disabled'}
+            {lastLocationUpdate && (
+              <small> • Last update: {new Date(lastLocationUpdate).toLocaleTimeString()}</small>
+            )}
+          </span>
+        </div>
+        
+        {!isTracking && (
+          <button 
+            onClick={handleRequestLocation}
+            className={styles.locationBtn}
+          >
+            📍 Enable Location
+          </button>
+        )}
+
+        {/* Background tracking toggle */}
+        <div className={styles.backgroundTrackingSection}>
+          <label className={styles.toggleLabel}>
+            <input
+              type="checkbox"
+              checked={backgroundTrackingEnabled}
+              onChange={toggleBackgroundTracking}
+              className={styles.toggleInput}
+            />
+            <span className={styles.toggleSlider}></span>
+            <span>Continuous background tracking</span>
+          </label>
+          <small>Keep tracking even when app is in background</small>
+        </div>
+        
+        {!audioInitialized && isTracking && soundEnabled && (
+          <button 
+            onClick={handleInitializeAudio}
+            className={styles.audioBtn}
+          >
+            🔊 Enable Sound Alerts
+          </button>
+        )}
+      </div>
+
+      {/* Desktop Alarms */}
+      <div className={styles.alarmsSection}>
+        <h2 className={styles.sectionTitle}>
+          🔔 My Alarms ({alarms.length})
+        </h2>
+
+        {alarms.length === 0 && (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyIcon}>📍</div>
+            <p>No alarms set</p>
+            <small>Click on the map to create one</small>
+          </div>
+        )}
+
+        <div className={styles.alarmsList}>
+          {alarms.map((alarm, i) => (
+            <div key={i} className={`${styles.alarmCard} ${alarm.triggered ? styles.triggered : ''}`}>
+              <div className={styles.alarmInfo}>
+                <div className={styles.alarmHeader}>
+                  <span className={`${styles.alarmBell} ${alarm.triggered ? styles.triggered : ''}`}>
+                    {alarm.triggered ? '🚨' : '🔔'}
+                  </span>
+                  <h3>{alarm.name}</h3>
+                </div>
+                <div className={styles.alarmDetails}>
+                  <p>Radius: {alarm.radius}m</p>
+                  <p className={styles.coordinates}>
+                    {alarm.location[0].toFixed(4)}, {alarm.location[1].toFixed(4)}
+                  </p>
+                  <p className={`${styles.alarmType} ${alarm.type === 'oneTime' ? styles.oneTime : styles.persistent}`}>
+                    {alarm.type === 'oneTime' ? '🔄 One-time use' : '🔁 Persistent'}
+                  </p>
+                  {alarm.expiresAt && (
+                    <p className={styles.expiresAt}>
+                      ⏰ Expires: {new Date(alarm.expiresAt).toLocaleString()}
+                    </p>
+                  )}
+                  {alarm.triggered && (
+                    <p className={styles.triggeredStatus}>🚨 TRIGGERED</p>
+                  )}
+                  {userLocation && (
+                    <p className={styles.distance}>
+                      Distance: {Math.round(getDistance(userLocation, alarm.location))}m
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              <div className={styles.alarmActions}>
+                {alarm.triggered && (
+                  <button
+                    onClick={() => resetAlarm(i)}
+                    className={styles.resetBtn}
+                  >
+                    Reset
+                  </button>
                 )}
                 <button
-                  type="submit"
-                  disabled={isSearching || !searchQuery.trim()}
-                  className={styles.searchBtn}
+                  onClick={() => deleteAlarm(i)}
+                  className={styles.deleteBtn}
+                  title="Delete alarm"
                 >
-                  {isSearching ? '🔄' : '🔍'}
+                  🗑️
                 </button>
               </div>
-            </form>
-            
-            {/* Search Results */}
-            {showSearchResults && (
-              <div className={styles.searchResults}>
-                {searchResults.length > 0 ? (
-                  <>
-                    <div className={styles.searchResultsHeader}>
-                      <span>Search Results</span>
-                      <button 
-                        onClick={() => setShowSearchResults(false)}
-                        className={styles.closeResultsBtn}
-                      >
-                        ✕
-                      </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop Footer */}
+      <div className={styles.sidebarFooter}>
+        <div className={styles.legend}>
+          <div className={styles.legendItem}>
+            <div className={`${styles.legendDot} ${styles.userLocation}`}></div>
+            <span>Your location</span>
+          </div>
+          <div className={styles.legendItem}>
+            <div className={`${styles.legendDot} ${styles.alarmLocation}`}></div>
+            <span>Alarm location</span>
+          </div>
+        </div>
+        <p>Click anywhere on the map to create a new geo-alarm, or use search to find locations</p>
+      </div>
+    </div>
+  );
+
+  const renderMobileUI = () => (
+    <>
+      {/* Mobile Top Bar */}
+      <div className={styles.mobileTopBar}>
+        <div className={styles.mobileSearchWrapper}>
+          <form onSubmit={handleSearch}>
+            <input
+              type="text"
+              placeholder="Search places..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={styles.mobileSearchInput}
+            />
+            <button
+              type="submit"
+              disabled={isSearching || !searchQuery.trim()}
+              className={`${styles.mobileSearchBtn} ${isSearching ? styles.loading : ''}`}
+            >
+              {isSearching ? '🔄' : '🔍'}
+            </button>
+          </form>
+        </div>
+        
+        <div className={styles.mobileTopControls}>
+          <button
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className={`${styles.mobileControlBtn} ${soundEnabled ? styles.active : ''}`}
+            title="Toggle Sound"
+          >
+            🔊
+          </button>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={styles.mobileControlBtn}
+            title="Toggle Theme"
+          >
+            {darkMode ? '☀️' : '🌙'}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Search Results */}
+      {showSearchResults && (
+        <div className={`${styles.mobileSearchResults} ${showSearchResults ? styles.show : ''}`}>
+          {searchResults.length > 0 ? (
+            <>
+              <div className={styles.searchResultsHeader}>
+                <span>Search Results</span>
+                <button 
+                  onClick={() => setShowSearchResults(false)}
+                  className={styles.closeResultsBtn}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className={styles.searchResultsList}>
+                {searchResults.map((result, index) => (
+                  <div
+                    key={index}
+                    onClick={() => selectSearchResult(result)}
+                    className={styles.searchResultItem}
+                  >
+                    <div className={styles.searchResultIcon}>📍</div>
+                    <div className={styles.searchResultText}>
+                      <div className={styles.searchResultName}>
+                        {result.display_name.split(',')[0]}
+                      </div>
+                      <div className={styles.searchResultAddress}>
+                        {result.display_name}
+                      </div>
                     </div>
-                    <div className={styles.searchResultsList}>
-                      {searchResults.map((result, index) => (
-                        <div
-                          key={index}
-                          onClick={() => selectSearchResult(result)}
-                          className={styles.searchResultItem}
-                        >
-                          <div className={styles.searchResultIcon}>📍</div>
-                          <div className={styles.searchResultText}>
-                            <div className={styles.searchResultName}>
-                              {result.display_name.split(',')[0]}
-                            </div>
-                            <div className={styles.searchResultAddress}>
-                              {result.display_name}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className={styles.noResults}>
-                    <div>No results found</div>
-                    <small>Try a different search term</small>
                   </div>
-                )}
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className={styles.noResults}>
+              <div>No results found</div>
+              <small>Try a different search term</small>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mobile Floating Action Button */}
+      <button 
+        className={styles.mobileFab}
+        onClick={() => alert('Tap anywhere on the map to create an alarm')}
+        title="Create new alarm"
+      >
+        +
+      </button>
+
+      {/* Mobile Bottom Sheet */}
+      <div className={`${styles.mobileBottomSheet} ${bottomSheetExpanded ? styles.expanded : ''}`}>
+        <div className={styles.bottomSheetHandle} onClick={toggleBottomSheet}></div>
+        
+        <div className={styles.bottomSheetHeader} onClick={toggleBottomSheet}>
+          <h2 className={styles.bottomSheetTitle}>
+            🧭 GeoAlarm
+            <span className={styles.bottomSheetStatus}>
+              <div className={`${styles.statusDot} ${isTracking ? styles.active : ''}`}></div>
+              {isTracking ? 'Active' : 'Inactive'} • {alarms.length} alarms
+            </span>
+          </h2>
+          <span style={{ fontSize: '18px', transform: bottomSheetExpanded ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.3s' }}>
+            ▲
+          </span>
+        </div>
+
+        <div className={styles.bottomSheetContent}>
+          {/* Quick Actions */}
+          <div className={styles.quickActions}>
+            {!isTracking ? (
+              <button 
+                onClick={handleRequestLocation}
+                className={styles.quickActionBtn}
+              >
+                <div className={styles.quickActionIcon}>📍</div>
+                <div className={styles.quickActionLabel}>Enable Location</div>
+              </button>
+            ) : (
+              <div className={`${styles.quickActionBtn} ${styles.active}`}>
+                <div className={styles.quickActionIcon}>✅</div>
+                <div className={styles.quickActionLabel}>Location Active</div>
+              </div>
+            )}
+            
+            {!audioInitialized && isTracking && soundEnabled ? (
+              <button 
+                onClick={handleInitializeAudio}
+                className={styles.quickActionBtn}
+              >
+                <div className={styles.quickActionIcon}>🔊</div>
+                <div className={styles.quickActionLabel}>Enable Audio</div>
+              </button>
+            ) : (
+              <div className={`${styles.quickActionBtn} ${audioInitialized ? styles.active : ''}`}>
+                <div className={styles.quickActionIcon}>{audioInitialized ? '🔊' : '🔇'}</div>
+                <div className={styles.quickActionLabel}>{audioInitialized ? 'Audio Ready' : 'Audio Off'}</div>
               </div>
             )}
           </div>
 
-          {/* Status */}
+          {/* Status Section */}
           <div className={styles.statusSection}>
             <div className={`${styles.statusIndicator} ${isTracking ? styles.active : styles.inactive}`}>
               <div className={styles.statusDot}></div>
@@ -802,15 +1010,6 @@ export default function GeoAlarmApp() {
                 )}
               </span>
             </div>
-            
-            {!isTracking && (
-              <button 
-                onClick={handleRequestLocation}
-                className={styles.locationBtn}
-              >
-                📍 Enable Location
-              </button>
-            )}
 
             {/* Background tracking toggle */}
             <div className={styles.backgroundTrackingSection}>
@@ -826,18 +1025,9 @@ export default function GeoAlarmApp() {
               </label>
               <small>Keep tracking even when app is in background</small>
             </div>
-            
-            {!audioInitialized && isTracking && soundEnabled && (
-              <button 
-                onClick={handleInitializeAudio}
-                className={styles.audioBtn}
-              >
-                🔊 Enable Sound Alerts
-              </button>
-            )}
           </div>
 
-          {/* Alarms */}
+          {/* Mobile Alarms */}
           <div className={styles.alarmsSection}>
             <h2 className={styles.sectionTitle}>
               🔔 My Alarms ({alarms.length})
@@ -847,7 +1037,7 @@ export default function GeoAlarmApp() {
               <div className={styles.emptyState}>
                 <div className={styles.emptyIcon}>📍</div>
                 <p>No alarms set</p>
-                <small>Click on the map to create one</small>
+                <small>Tap on the map to create one</small>
               </div>
             )}
 
@@ -906,22 +1096,24 @@ export default function GeoAlarmApp() {
               ))}
             </div>
           </div>
-
-          {/* Footer */}
-          <div className={styles.sidebarFooter}>
-            <div className={styles.legend}>
-              <div className={styles.legendItem}>
-                <div className={`${styles.legendDot} ${styles.userLocation}`}></div>
-                <span>Your location</span>
-              </div>
-              <div className={styles.legendItem}>
-                <div className={`${styles.legendDot} ${styles.alarmLocation}`}></div>
-                <span>Alarm location</span>
-              </div>
-            </div>
-            <p>Click anywhere on the map to create a new geo-alarm, or use search to find locations</p>
-          </div>
         </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossOrigin=""
+      />
+
+      <div className={`${styles.appContainer} ${darkMode ? styles.dark : ''}`}>
+        {/* Render different UI based on screen size */}
+        {!isMobile && renderDesktopSidebar()}
+        {isMobile && renderMobileUI()}
 
         {/* Map Container */}
         <div className={styles.mapContainer}>
@@ -932,7 +1124,7 @@ export default function GeoAlarmApp() {
               <div className={styles.loadingSpinner}></div>
               <p>Loading map...</p>
             </div>
-            )}
+          )}
         </div>
       </div>
     </>
