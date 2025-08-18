@@ -9,8 +9,9 @@ import {
   searchLocation 
 } from '../util/getUtils';
 import styles from '../styles/GeoAlarm.module.css';
+import { GeoAlarmDB, ServiceWorkerManager, LocationManager } from '../util/db';
 
-export default function GeoAlarmApp({ db, swManager }) {
+export default function GeoAlarmApp() {
   const [userLocation, setUserLocation] = useState([43.6532, -79.3832]); // Toronto default
   const [alarms, setAlarms] = useState([]);
   const [darkMode, setDarkMode] = useState(false);
@@ -26,6 +27,16 @@ export default function GeoAlarmApp({ db, swManager }) {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  
+  // Background tracking states
+  const [backgroundTrackingEnabled, setBackgroundTrackingEnabled] = useState(false);
+  const [locationWatchId, setLocationWatchId] = useState(null);
+  const [lastLocationUpdate, setLastLocationUpdate] = useState(null);
+  
+  // Initialize database and managers
+  const [database] = useState(() => new GeoAlarmDB());
+  const [swManager] = useState(() => new ServiceWorkerManager());
+  const [locationManager] = useState(() => new LocationManager());
 
   // Initialize map when component mounts
   useEffect(() => {
@@ -53,7 +64,6 @@ export default function GeoAlarmApp({ db, swManager }) {
       attributionControl: true
     }).setView(userLocation, 13);
     
-    // Move zoom control to avoid overlap with mobile menu button
     mapInstance.zoomControl.setPosition('topright');
     
     const tileLayer = darkMode 
@@ -69,14 +79,115 @@ export default function GeoAlarmApp({ db, swManager }) {
     setMap(mapInstance);
   };
 
+  // Enhanced service worker registration and messaging
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      registerServiceWorker();
+    }
+  }, []);
+
+  const registerServiceWorker = async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('Service Worker registered:', registration);
+      
+      // Listen for messages from service worker
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+      
+      // Request notification permission
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+      
+      return registration;
+    } catch (error) {
+      console.error('Service Worker registration failed:', error);
+    }
+  };
+
+  const handleServiceWorkerMessage = (event) => {
+    const { type, alarm } = event.data;
+    
+    if (type === 'ALARM_TRIGGERED') {
+      console.log('Alarm triggered in background:', alarm);
+      // Update the alarm state to reflect the trigger
+      setAlarms(prev => prev.map(a => 
+        a.createdAt === alarm.id ? { ...a, triggered: true } : a
+      ));
+    }
+  };
+
+  // Enhanced background location tracking
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    if (backgroundTrackingEnabled && !locationWatchId) {
+      startContinuousLocationTracking();
+    } else if (!backgroundTrackingEnabled && locationWatchId) {
+      stopContinuousLocationTracking();
+    }
+
+    return () => {
+      if (locationWatchId) {
+        navigator.geolocation.clearWatch(locationWatchId);
+      }
+    };
+  }, [backgroundTrackingEnabled]);
+
+  const startContinuousLocationTracking = () => {
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 30000 // 30 seconds
+    };
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const newLocation = [position.coords.latitude, position.coords.longitude];
+        setUserLocation(newLocation);
+        setLastLocationUpdate(Date.now());
+        
+        // Sync with service worker
+        syncLocationWithServiceWorker(newLocation);
+        
+        console.log('Location updated:', newLocation);
+      },
+      (error) => {
+        console.error('Location tracking error:', error);
+        // Don't stop tracking on error, just log it
+      },
+      options
+    );
+
+    setLocationWatchId(watchId);
+    setIsTracking(true);
+  };
+
+  const stopContinuousLocationTracking = () => {
+    if (locationWatchId) {
+      navigator.geolocation.clearWatch(locationWatchId);
+      setLocationWatchId(null);
+    }
+    setIsTracking(false);
+  };
+
+  const syncLocationWithServiceWorker = (location) => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'LOCATION_UPDATE',
+        data: { location, timestamp: Date.now() }
+      });
+    }
+  };
+
   // Load saved data on mount
   useEffect(() => {
-    if (!db) return;
+    if (!database) return;
     
     const loadSavedData = async () => {
       try {
-        const savedAlarms = await db.loadAlarms();
-        const savedSettings = await db.loadSettings();
+        const savedAlarms = await database.loadAlarms();
+        const savedSettings = await database.loadSettings();
         
         if (savedAlarms.length > 0) {
           setAlarms(savedAlarms);
@@ -88,39 +199,51 @@ export default function GeoAlarmApp({ db, swManager }) {
         if (savedSettings.soundEnabled !== undefined) {
           setSoundEnabled(savedSettings.soundEnabled);
         }
+        if (savedSettings.backgroundTrackingEnabled !== undefined) {
+          setBackgroundTrackingEnabled(savedSettings.backgroundTrackingEnabled);
+        }
       } catch (error) {
         console.error('Failed to load saved data:', error);
       }
     };
     
     loadSavedData();
-  }, [db]);
+  }, [database]);
 
-  // Save alarms whenever they change
+  // Save alarms and sync with service worker
   useEffect(() => {
-    if (!db || alarms.length === 0) return;
+    if (!database || alarms.length === 0) return;
     
     const saveAlarms = async () => {
       try {
-        await db.saveAlarms(alarms);
+        await database.saveAlarms(alarms);
+        
+        // Sync alarms with service worker
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'SYNC_ALARMS',
+            data: { alarms }
+          });
+        }
       } catch (error) {
         console.error('Failed to save alarms:', error);
       }
     };
     
     saveAlarms();
-  }, [alarms, db]);
+  }, [alarms, database]);
 
   // Save settings whenever they change
   useEffect(() => {
-    if (!db) return;
+    if (!database) return;
     
     const saveSettings = async () => {
       try {
-        await db.saveSettings({
+        await database.saveSettings({
           darkMode,
           soundEnabled,
-          audioInitialized
+          audioInitialized,
+          backgroundTrackingEnabled
         });
       } catch (error) {
         console.error('Failed to save settings:', error);
@@ -128,14 +251,13 @@ export default function GeoAlarmApp({ db, swManager }) {
     };
     
     saveSettings();
-  }, [darkMode, soundEnabled, audioInitialized, db]);
+  }, [darkMode, soundEnabled, audioInitialized, backgroundTrackingEnabled, database]);
 
   // Resize map when sidebar toggles (mobile) with better timing
   useEffect(() => {
     if (map) {
       const timeoutId = setTimeout(() => {
         map.invalidateSize();
-        // Trigger map controls repositioning
         map.getContainer().classList.toggle('sidebar-open', sidebarOpen);
       }, 300);
       
@@ -217,15 +339,7 @@ export default function GeoAlarmApp({ db, swManager }) {
     setAlarmMarkers(newMarkers);
   }, [alarms, map]);
 
-  // Get user location with better accuracy
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    if (window.innerWidth <= 768) return;
-
-    handleRequestLocation();
-  }, []);
-
-  // Check for alarm triggers
+  // Enhanced alarm trigger checking with better mobile support
   useEffect(() => {
     if (!userLocation || !Array.isArray(alarms) || alarms.length === 0) return;
     
@@ -233,7 +347,10 @@ export default function GeoAlarmApp({ db, swManager }) {
       alarms.forEach((alarm, index) => {
         if (alarm && !alarm.triggered && alarm.location && Array.isArray(alarm.location)) {
           const distance = getDistance(userLocation, alarm.location);
-          if (distance < (alarm.radius || 200)) {
+          console.log(`Distance to ${alarm.name}: ${distance}m (threshold: ${alarm.radius}m)`);
+          
+          if (distance <= (alarm.radius || 200)) {
+            console.log(`Triggering alarm: ${alarm.name}`);
             triggerAlarm(index);
           }
         }
@@ -256,30 +373,46 @@ export default function GeoAlarmApp({ db, swManager }) {
     );
   };
 
+  const toggleBackgroundTracking = () => {
+    setBackgroundTrackingEnabled(!backgroundTrackingEnabled);
+  };
+
   function triggerAlarm(index) {
     try {
       setAlarms(prev => prev.map((a, i) => (i === index ? { ...a, triggered: true } : a)));
       
       const alarmName = alarms[index]?.name || 'Unknown Location';
       
-      if (soundEnabled) {
+      if (soundEnabled && audioInitialized) {
         playVoiceAlert(alarmName);
       }
 
+      // Enhanced notification with better mobile support
       try {
         if (typeof window !== 'undefined' && 'Notification' in window) {
           if (Notification.permission === 'granted') {
-            new Notification('🚨 Geo-Alarm Triggered!', {
+            const notification = new Notification('🚨 Geo-Alarm Triggered!', {
               body: `You're near: ${alarmName}`,
               icon: '/favicon.ico',
               tag: `alarm-${index}`,
-              requireInteraction: false
+              requireInteraction: true,
+              vibrate: [200, 100, 200, 100, 200], // Vibration pattern for mobile
+              silent: false
             });
+
+            // Auto-close notification after 10 seconds
+            setTimeout(() => notification.close(), 10000);
           }
         }
       } catch (notificationError) {
         console.log("Notification failed:", notificationError);
       }
+
+      // Vibration for mobile devices
+      if ('vibrator' in navigator || 'vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
+
     } catch (error) {
       console.error("Error in triggerAlarm:", error);
     }
@@ -333,22 +466,18 @@ export default function GeoAlarmApp({ db, swManager }) {
     const { lat, lon, display_name } = result;
     const location = [parseFloat(lat), parseFloat(lon)];
     
-    // Move map to selected location
     if (map) {
       map.setView(location, 15);
     }
     
-    // Clear search
     setSearchQuery('');
     setSearchResults([]);
     setShowSearchResults(false);
     
-    // Close sidebar on mobile after selection
     if (window.innerWidth <= 768) {
       setSidebarOpen(false);
     }
     
-    // Ask user if they want to create an alarm here
     setTimeout(() => {
       const createAlarm = confirm(`Create alarm at: ${display_name}?`);
       if (createAlarm) {
@@ -375,18 +504,9 @@ export default function GeoAlarmApp({ db, swManager }) {
     setShowSearchResults(false);
   };
 
-  // Request notification permission
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  // Handle sidebar toggle with better mobile experience
   const handleSidebarToggle = () => {
     setSidebarOpen(!sidebarOpen);
     
-    // Close search results when opening sidebar
     if (!sidebarOpen) {
       setShowSearchResults(false);
     }
@@ -536,16 +656,37 @@ export default function GeoAlarmApp({ db, swManager }) {
           <div className={styles.statusSection}>
             <div className={`${styles.statusIndicator} ${isTracking ? styles.active : styles.inactive}`}>
               <div className={styles.statusDot}></div>
-              <span>{isTracking ? 'Location tracking active' : 'Location tracking disabled'}</span>
+              <span>
+                {isTracking ? 'Location tracking active' : 'Location tracking disabled'}
+                {lastLocationUpdate && (
+                  <small> • Last update: {new Date(lastLocationUpdate).toLocaleTimeString()}</small>
+                )}
+              </span>
             </div>
+            
             {!isTracking && (
               <button 
                 onClick={handleRequestLocation}
                 className={styles.locationBtn}
               >
-                📍 Enable Location & Audio
+                📍 Enable Location
               </button>
             )}
+
+            {/* Background tracking toggle */}
+            <div className={styles.backgroundTrackingSection}>
+              <label className={styles.toggleLabel}>
+                <input
+                  type="checkbox"
+                  checked={backgroundTrackingEnabled}
+                  onChange={toggleBackgroundTracking}
+                  className={styles.toggleInput}
+                />
+                <span className={styles.toggleSlider}></span>
+                <span>Continuous background tracking</span>
+              </label>
+              <small>Keep tracking even when app is in background</small>
+            </div>
             
             {!audioInitialized && isTracking && soundEnabled && (
               <button 
@@ -588,6 +729,11 @@ export default function GeoAlarmApp({ db, swManager }) {
                       </p>
                       {alarm.triggered && (
                         <p className={styles.triggeredStatus}>🚨 TRIGGERED</p>
+                      )}
+                      {userLocation && (
+                        <p className={styles.distance}>
+                          Distance: {Math.round(getDistance(userLocation, alarm.location))}m
+                        </p>
                       )}
                     </div>
                   </div>
@@ -639,7 +785,7 @@ export default function GeoAlarmApp({ db, swManager }) {
               <div className={styles.loadingSpinner}></div>
               <p>Loading map...</p>
             </div>
-          )}
+            )}
         </div>
       </div>
     </>
