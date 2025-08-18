@@ -40,7 +40,7 @@
 }
 
 .mobileSearchInput {
-  width: 100%;
+  width: 70%;
   padding: 10px 40px 10px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -213,13 +213,13 @@
   max-height: calc(80vh - 120px);
 }
 
-/* Mobile Search Results (Top Bar) */
+/* Mobile Search Results - FIXED Z-INDEX */
 .mobileSearchResults {
   position: fixed;
   top: 76px;
   left: 16px;
   right: 16px;
-  z-index: 1001;
+  z-index: 1002; /* Higher than top bar to ensure it's on top */
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -559,6 +559,7 @@
   color: #9ca3af;
   transition: color 0.2s;
   font-size: 14px;
+  z-index: 1003; /* Ensure close button is clickable */
 }
 
 .closeResultsBtn:hover {
@@ -687,6 +688,8 @@
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
+  z-index: 1003; /* Ensure audio button is accessible */
+  position: relative;
 }
 
 .audioBtn:hover {
@@ -909,6 +912,8 @@
   cursor: pointer;
   transition: background 0.2s;
   font-weight: 500;
+  z-index: 1003; /* Ensure reset button is accessible */
+  position: relative;
 }
 
 .resetBtn:hover {
@@ -926,6 +931,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1003; /* Ensure delete button is accessible */
+  position: relative;
 }
 
 .deleteBtn:hover {
@@ -1042,12 +1049,13 @@
     margin-top: 76px; /* Account for top bar */
     margin-bottom: 80px; /* Account for bottom sheet */
     height: calc(100vh - 156px);
+    z-index: 1; /* Lower z-index to ensure UI elements are on top */
   }
 
   /* Map controls adjustments */
   .mapContainer .leaflet-control-container {
     position: relative;
-    z-index: 500;
+    z-index: 500; /* Lower than UI elements but higher than map */
   }
 
   .mapContainer .leaflet-control-zoom {
@@ -1057,6 +1065,19 @@
 
   .mapContainer .leaflet-control-attribution {
     display: none; /* Hide attribution on mobile to save space */
+  }
+
+  /* Ensure audio and location buttons are accessible */
+  .bottomSheetContent .locationBtn,
+  .bottomSheetContent .audioBtn {
+    z-index: 1003;
+    position: relative;
+  }
+
+  /* Fix for search overlay covering buttons */
+  .bottomSheetContent {
+    z-index: 999; /* Lower than search results but higher than map */
+    position: relative;
   }
 }
 
@@ -1117,6 +1138,11 @@
   .alarmDetails {
     font-size: 12px;
   }
+
+  /* Ensure search results don't cover buttons on small screens */
+  .mobileSearchResults {
+    max-height: 250px;
+  }
 }
 
 /* Landscape Mobile */
@@ -1132,6 +1158,47 @@
 
   .mapContainer {
     height: calc(100vh - 136px);
+  }
+
+  /* Ensure search results don't cover bottom sheet in landscape */
+  .mobileSearchResults {
+    max-height: 200px;
+  }
+}
+
+/* Floating Action Button for creating alarms on mobile - FIXED Z-INDEX */
+.mobileFab {
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transition: all 0.3s ease;
+  z-index: 1001; /* Higher than bottom sheet but lower than search results */
+  display: none;
+}
+
+.mobileFab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+}
+
+.mobileFab:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .mobileFab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
@@ -1180,6 +1247,33 @@
   .toggleLabel {
     min-height: 48px;
   }
+
+  /* Fixed positioning for better accessibility */
+  .bottomSheetContent .statusSection {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px solid #e2e8f0;
+    position: relative;
+    z-index: 999; /* Ensure content is accessible */
+  }
+
+  .dark .bottomSheetContent .statusSection {
+    background: #374151;
+    border-color: #4b5563;
+  }
+
+  /* Ensure all interactive elements in bottom sheet are accessible */
+  .bottomSheetContent * {
+    position: relative;
+    z-index: 999;
+  }
+
+  /* Override for search results to be on top */
+  .mobileSearchResults * {
+    z-index: 1002;
+  }
 }
 
 /* Smooth scrolling for better UX */
@@ -1216,42 +1310,6 @@
   background: #6b7280;
 }
 
-/* Floating Action Button for creating alarms on mobile */
-.mobileFab {
-  position: fixed;
-  bottom: 100px;
-  right: 20px;
-  width: 56px;
-  height: 56px;
-  border: none;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: white;
-  font-size: 24px;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-  transition: all 0.3s ease;
-  z-index: 999;
-  display: none;
-}
-
-.mobileFab:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
-}
-
-.mobileFab:active {
-  transform: scale(0.95);
-}
-
-@media (max-width: 768px) {
-  .mobileFab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-
 /* Status indicators in mobile top bar */
 .mobileTopBar .statusIndicator {
   background: transparent;
@@ -1266,18 +1324,9 @@
   height: 6px;
 }
 
-/* Better visual hierarchy */
-.bottomSheetContent .statusSection {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-  border: 1px solid #e2e8f0;
-}
-
-.dark .bottomSheetContent .statusSection {
-  background: #374151;
-  border-color: #4b5563;
+/* Loading states */
+.mobileSearchBtn.loading {
+  animation: spin 1s linear infinite;
 }
 
 /* Improved button styles */
@@ -1313,11 +1362,6 @@
   }
 }
 
-/* Loading states */
-.mobileSearchBtn.loading {
-  animation: spin 1s linear infinite;
-}
-
 /* Focus styles for accessibility */
 .mobileSearchInput:focus,
 .quickActionBtn:focus,
@@ -1342,5 +1386,52 @@
 
   .toggleSlider {
     border: 1px solid currentColor;
+  }
+}
+
+/* Additional fix for search overlay issue */
+@media (max-width: 768px) {
+  /* Create a search overlay backdrop that can be clicked to close */
+  .mobileSearchResults::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.1);
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .mobileSearchResults.show::before {
+    pointer-events: auto;
+  }
+
+  /* Ensure proper stacking context */
+  .mobileBottomSheet {
+    z-index: 1000;
+  }
+
+  .mobileTopBar {
+    z-index: 1001;
+  }
+
+  .mobileSearchResults {
+    z-index: 1002;
+  }
+
+  /* Fix for any content that might be behind search */
+  .mobileFab {
+    z-index: 1001;
+  }
+
+  /* Ensure map controls are accessible but below UI */
+  #map .leaflet-control-container {
+    z-index: 500 !important;
+  }
+
+  #map .leaflet-control-zoom {
+    z-index: 500 !important;
   }
 }
