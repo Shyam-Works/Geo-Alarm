@@ -1,0 +1,928 @@
+.appContainer {
+  display: flex;
+  height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f8fafc;
+  color: #1e293b;
+  position: relative;
+}
+
+.appContainer.dark {
+  background: #0f172a;
+  color: #f1f5f9;
+}
+
+/* Mobile Menu Button */
+.mobileMenuBtn {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 1001;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.dark .mobileMenuBtn {
+  background: rgba(30, 41, 59, 0.95);
+  color: #f1f5f9;
+}
+
+.mobileMenuBtn:hover {
+  transform: scale(1.05);
+}
+
+/* Hamburger Icon */
+.hamburger {
+  position: relative;
+  width: 20px;
+  height: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.hamburger span {
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: currentColor;
+  border-radius: 1px;
+  transition: all 0.3s ease;
+  transform-origin: center;
+}
+
+.hamburger.open span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.hamburger.open span:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger.open span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+/* Mobile Close Button */
+.mobileCloseBtn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1002;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: all 0.2s;
+}
+
+.mobileCloseBtn:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dark .mobileCloseBtn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+.dark .mobileCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Sidebar Overlay */
+.sidebarOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: none;
+}
+
+.sidebar {
+  width: 320px;
+  background: white;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 1000;
+  transition: transform 0.3s ease;
+}
+
+.dark .sidebar {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.sidebarHeader {
+  padding: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dark .sidebarHeader {
+  border-color: #334155;
+}
+
+.appTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.appTitle h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.titleIcon {
+  font-size: 28px;
+}
+
+.headerControls {
+  display: flex;
+  gap: 8px;
+}
+
+.controlBtn {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.controlBtn:hover {
+  background: #e2e8f0;
+}
+
+.dark .controlBtn {
+  background: #374151;
+}
+
+.dark .controlBtn:hover {
+  background: #4b5563;
+}
+
+.controlBtn.active {
+  background: #3b82f6;
+  color: white;
+}
+
+/* Search Section */
+.searchSection {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  position: relative;
+}
+
+.dark .searchSection {
+  border-color: #334155;
+}
+
+.searchForm {
+  width: 100%;
+}
+
+.searchInputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.searchInputWrapper:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.dark .searchInputWrapper {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.searchInput {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  outline: none;
+  color: inherit;
+}
+
+.searchInput::placeholder {
+  color: #9ca3af;
+}
+
+.dark .searchInput::placeholder {
+  color: #6b7280;
+}
+
+.clearSearchBtn {
+  padding: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: color 0.2s;
+  font-size: 12px;
+}
+
+.clearSearchBtn:hover {
+  color: #ef4444;
+}
+
+.searchBtn {
+  padding: 10px 12px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  min-width: 40px;
+}
+
+.searchBtn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.searchBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.searchResults {
+  position: absolute;
+  top: 100%;
+  left: 24px;
+  right: 24px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 300px;
+  overflow: hidden;
+}
+
+.dark .searchResults {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.searchResultsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.dark .searchResultsHeader {
+  background: #4b5563;
+  border-color: #6b7280;
+  color: #d1d5db;
+}
+
+.closeResultsBtn {
+  padding: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: color 0.2s;
+  font-size: 14px;
+}
+
+.closeResultsBtn:hover {
+  color: #ef4444;
+}
+
+.searchResultsList {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.searchResultItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.searchResultItem:hover {
+  background: #f8fafc;
+}
+
+.searchResultItem:last-child {
+  border-bottom: none;
+}
+
+.dark .searchResultItem {
+  border-color: #4b5563;
+}
+
+.dark .searchResultItem:hover {
+  background: #4b5563;
+}
+
+.searchResultIcon {
+  font-size: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.searchResultText {
+  flex: 1;
+  min-width: 0;
+}
+
+.searchResultName {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #1e293b;
+  word-break: break-word;
+}
+
+.dark .searchResultName {
+  color: #f1f5f9;
+}
+
+.searchResultAddress {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dark .searchResultAddress {
+  color: #94a3b8;
+}
+
+.noResults {
+  padding: 24px 16px;
+  text-align: center;
+  color: #64748b;
+}
+
+.dark .noResults {
+  color: #94a3b8;
+}
+
+.noResults div {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.noResults small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.statusSection {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dark .statusSection {
+  border-color: #334155;
+}
+
+.locationBtn {
+  margin-top: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.locationBtn:hover {
+  background: #2563eb;
+}
+
+.audioBtn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #f59e0b;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.audioBtn:hover {
+  background: #d97706;
+}
+
+.statusIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+.statusIndicator.active .statusDot {
+  background: #10b981;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.alarmsSection {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.sectionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 32px 16px;
+  color: #64748b;
+}
+
+.dark .emptyState {
+  color: #94a3b8;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.emptyState p {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+}
+
+.emptyState small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.alarmsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.alarmCard {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+.alarmCard:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.dark .alarmCard {
+  border-color: #374151;
+  background: #374151;
+}
+
+.alarmCard.triggered {
+  border-color: #ef4444;
+  background: #fef2f2;
+  animation: triggerPulse 2s infinite;
+}
+
+.dark .alarmCard.triggered {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes triggerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.alarmHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.alarmBell {
+  font-size: 16px;
+}
+
+.alarmHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.alarmDetails {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.dark .alarmDetails {
+  color: #94a3b8;
+}
+
+.alarmDetails p {
+  margin: 2px 0;
+}
+
+.coordinates {
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.triggeredStatus {
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 12px;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.alarmActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.resetBtn {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #3b82f6;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.resetBtn:hover {
+  background: #2563eb;
+}
+
+.deleteBtn {
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.2s;
+}
+
+.deleteBtn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.sidebarFooter {
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.dark .sidebarFooter {
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legendDot.userLocation {
+  background: #3b82f6;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.legendDot.alarmLocation {
+  background: #f59e0b;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px #f59e0b;
+}
+
+.mapContainer {
+  flex: 1;
+  position: relative;
+}
+
+.mapLoading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 1000;
+}
+
+.loadingSpinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+  .mobileMenuBtn {
+    display: flex;
+    z-index: 1001; /* Higher than map controls */
+  }
+
+  .mobileCloseBtn {
+    display: flex;
+  }
+
+  .sidebarOverlay {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 75%; /* Reduced from 90% to show more map */
+    max-width: 300px; /* Reduced from 340px */
+    transform: translateX(-100%);
+    z-index: 1000;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebarHeader {
+    padding-top: 60px; /* Account for close button */
+  }
+
+  .mapContainer {
+    width: 100%;
+    position: relative;
+  }
+
+  /* Fix for Leaflet map controls positioning */
+  .mapContainer .leaflet-control-container {
+    position: relative;
+    z-index: 500; /* Lower than mobile menu button */
+  }
+
+  /* Push zoom controls away from mobile menu button */
+  .mapContainer .leaflet-control-zoom {
+    margin-top: 70px !important; /* Push below mobile menu button */
+    margin-left: 10px !important;
+  }
+
+  /* When sidebar is open, adjust map controls position */
+  .sidebar.open ~ .mapContainer .leaflet-control-zoom {
+    margin-left: calc(75% + 20px) !important; /* Move controls to visible map area */
+    transition: margin-left 0.3s ease;
+  }
+
+  /* Attribution control positioning */
+  .mapContainer .leaflet-control-attribution {
+    right: 10px !important;
+    bottom: 10px !important;
+  }
+
+  .sidebar.open ~ .mapContainer .leaflet-control-attribution {
+    right: calc(100% - 75% + 10px) !important; /* Move to visible map area */
+    transition: right 0.3s ease;
+  }
+
+  /* Ensure map container adjusts when sidebar opens */
+  .mapContainer {
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.open ~ .mapContainer {
+    transform: translateX(0); /* Keep map in place but controls move */
+  }
+}
+@media (max-width: 480px) {
+  .sidebar {
+    width: 80%; /* Show 20% of map on small screens */
+    max-width: none;
+  }
+
+  .mobileMenuBtn {
+    width: 44px;
+    height: 44px;
+    top: 12px;
+    left: 12px;
+    z-index: 1001; /* Ensure it's above everything */
+  }
+
+  .sidebarHeader {
+    padding: 60px 16px 16px 16px;
+  }
+
+  .alarmsSection {
+    padding: 16px;
+  }
+
+  .sidebarFooter {
+    padding: 12px 16px;
+  }
+
+  .appTitle h1 {
+    font-size: 20px;
+  }
+
+  .titleIcon {
+    font-size: 24px;
+  }
+
+  /* Adjust zoom controls for smaller screens */
+  .mapContainer .leaflet-control-zoom {
+    margin-top: 65px !important;
+    margin-left: 8px !important;
+  }
+
+  .sidebar.open ~ .mapContainer .leaflet-control-zoom {
+    margin-left: calc(80% + 15px) !important;
+  }
+
+  .sidebar.open ~ .mapContainer .leaflet-control-attribution {
+    right: calc(100% - 80% + 8px) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Ensure hamburger menu is always visible and clickable */
+  .mobileMenuBtn {
+    position: fixed;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Dark mode hamburger button */
+  .dark .mobileMenuBtn {
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  /* Smooth transitions for all map controls */
+  .mapContainer .leaflet-control {
+    transition: all 0.3s ease !important;
+  }
+
+  /* Prevent map from being completely hidden */
+  .sidebarOverlay {
+    background: rgba(0, 0, 0, 0.3); /* Slightly transparent to see map behind */
+  }
+
+  /* Better sidebar scrolling on mobile */
+  .sidebar {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Tablet landscape adjustments */
+@media (min-width: 481px) and (max-width: 768px) and (orientation: landscape) {
+  .sidebar {
+    width: 60%; /* Show more map in landscape */
+    max-width: 280px;
+  }
+
+  .sidebar.open ~ .mapContainer .leaflet-control-zoom {
+    margin-left: calc(60% + 20px) !important;
+  }
+
+  .sidebar.open ~ .mapContainer .leaflet-control-attribution {
+    right: calc(100% - 60% + 10px) !important;
+  }
+}
+
+/* Fix for very small screens */
+@media (max-width: 320px) {
+  .sidebar {
+    width: 85%;
+  }
+
+  .mobileMenuBtn {
+    width: 40px;
+    height: 40px;
+    top: 10px;
+    left: 10px;
+  }
+
+  .sidebar.open ~ .mapContainer .leaflet-control-zoom {
+    margin-left: calc(85% + 10px) !important;
+  }
+
+  .sidebar.open ~ .mapContainer .leaflet-control-attribution {
+    right: calc(100% - 85% + 5px) !important;
+  }
+}
