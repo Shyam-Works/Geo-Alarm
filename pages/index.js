@@ -137,24 +137,42 @@ export default function GeoAlarmApp() {
   const startContinuousLocationTracking = () => {
     const options = {
       enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 30000 // 30 seconds
+      timeout: 5000, // Reduced timeout for faster response
+      maximumAge: 10000 // Reduced to 10 seconds for more frequent updates
     };
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const newLocation = [position.coords.latitude, position.coords.longitude];
+        const previousLocation = userLocation;
+        
+        // Only update if location changed significantly (more than 5 meters)
+        if (previousLocation && getDistance(previousLocation, newLocation) < 5) {
+          return;
+        }
+        
         setUserLocation(newLocation);
         setLastLocationUpdate(Date.now());
         
         // Sync with service worker
         syncLocationWithServiceWorker(newLocation);
         
-        console.log('Location updated:', newLocation);
+        console.log('Location updated:', newLocation, 'Accuracy:', position.coords.accuracy);
       },
       (error) => {
         console.error('Location tracking error:', error);
-        // Don't stop tracking on error, just log it
+        // Try to get location again with lower accuracy requirements
+        if (error.code === error.TIMEOUT) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const newLocation = [position.coords.latitude, position.coords.longitude];
+              setUserLocation(newLocation);
+              setLastLocationUpdate(Date.now());
+            },
+            () => {}, // Ignore errors on retry
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+          );
+        }
       },
       options
     );
@@ -210,7 +228,7 @@ export default function GeoAlarmApp() {
     loadSavedData();
   }, [database]);
 
-  // Save alarms and sync with service worker
+  // Save alarms and sync with service worker - but avoid saving when alarms are being cleaned up
   useEffect(() => {
     if (!database || alarms.length === 0) return;
     
@@ -230,7 +248,12 @@ export default function GeoAlarmApp() {
       }
     };
     
-    saveAlarms();
+    // Only auto-save if we have alarms (normal operation)
+    // Manual saves are handled in delete functions
+    const hasActiveAlarms = alarms.some(alarm => !alarm.triggered || alarm.type === 'persistent');
+    if (hasActiveAlarms) {
+      saveAlarms();
+    }
   }, [alarms, database]);
 
   // Save settings whenever they change
@@ -344,12 +367,50 @@ export default function GeoAlarmApp() {
     if (!userLocation || !Array.isArray(alarms) || alarms.length === 0) return;
     
     try {
-      alarms.forEach((alarm, index) => {
+      // Clean up expired alarms first
+      const now = new Date();
+      const activeAlarms = alarms.filter(alarm => {
+        if (alarm.expiresAt && new Date(alarm.expiresAt) < now) {
+          return false; // Remove expired alarm
+        }
+        return true;
+      });
+      
+      // Update alarms if any were removed due to expiration
+      if (activeAlarms.length !== alarms.length) {
+        setAlarms(activeAlarms);
+        
+        // Save expired alarm cleanup to database immediately
+        setTimeout(async () => {
+          try {
+            await database.saveAlarms(activeAlarms);
+            
+            // Sync with service worker
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                type: 'SYNC_ALARMS',
+                data: { alarms: activeAlarms }
+              });
+            }
+            
+            console.log('Expired alarms cleaned from storage');
+          } catch (error) {
+            console.error('Failed to clean expired alarms from storage:', error);
+          }
+        }, 100);
+        
+        return; // Skip trigger checking this time, let it run again with cleaned alarms
+      }
+      
+      activeAlarms.forEach((alarm, index) => {
         if (alarm && !alarm.triggered && alarm.location && Array.isArray(alarm.location)) {
           const distance = getDistance(userLocation, alarm.location);
           console.log(`Distance to ${alarm.name}: ${distance}m (threshold: ${alarm.radius}m)`);
           
-          if (distance <= (alarm.radius || 200)) {
+          // Add some buffer for mobile GPS accuracy issues
+          const triggerRadius = alarm.radius + 10; // Add 10m buffer
+          
+          if (distance <= triggerRadius) {
             console.log(`Triggering alarm: ${alarm.name}`);
             triggerAlarm(index);
           }
@@ -379,9 +440,12 @@ export default function GeoAlarmApp() {
 
   function triggerAlarm(index) {
     try {
+      const alarm = alarms[index];
+      if (!alarm || alarm.triggered) return;
+      
       setAlarms(prev => prev.map((a, i) => (i === index ? { ...a, triggered: true } : a)));
       
-      const alarmName = alarms[index]?.name || 'Unknown Location';
+      const alarmName = alarm.name || 'Unknown Location';
       
       if (soundEnabled && audioInitialized) {
         playVoiceAlert(alarmName);
@@ -413,6 +477,31 @@ export default function GeoAlarmApp() {
         navigator.vibrate([200, 100, 200, 100, 200]);
       }
 
+      // Auto-delete one-time alarms after 3 seconds
+      if (alarm.type === 'oneTime') {
+        setTimeout(async () => {
+          const newAlarms = alarms.filter((_, i) => i !== index);
+          setAlarms(newAlarms);
+          
+          // Immediately save to database and sync with service worker
+          try {
+            await database.saveAlarms(newAlarms);
+            
+            // Sync with service worker
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                type: 'SYNC_ALARMS',
+                data: { alarms: newAlarms }
+              });
+            }
+            
+            console.log('One-time alarm deleted from storage:', alarmName);
+          } catch (error) {
+            console.error('Failed to delete alarm from storage:', error);
+          }
+        }, 3000);
+      }
+
     } catch (error) {
       console.error("Error in triggerAlarm:", error);
     }
@@ -425,18 +514,53 @@ export default function GeoAlarmApp() {
     const radiusInput = prompt("Enter radius in meters (default: 200):");
     const radius = parseInt(radiusInput) || 200;
     
+    // Ask for alarm type
+    const alarmType = confirm("One-time use alarm? (OK = Yes, Cancel = Persistent)") ? 'oneTime' : 'persistent';
+    
+    // Ask for auto-expire time if persistent
+    let expiresAt = null;
+    if (alarmType === 'persistent') {
+      const hours = prompt("Auto-delete after how many hours? (default: never, enter 0 for never):");
+      const hoursNum = parseInt(hours);
+      if (hoursNum && hoursNum > 0) {
+        expiresAt = new Date(Date.now() + (hoursNum * 60 * 60 * 1000)).toISOString();
+      }
+    }
+    
     setAlarms(prev => [...prev, { 
       name, 
       location: [e.latlng.lat, e.latlng.lng], 
       radius,
       triggered: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      type: alarmType,
+      expiresAt: expiresAt
     }]);
   }
 
   function deleteAlarm(index) {
     if (confirm("Are you sure you want to delete this alarm?")) {
-      setAlarms(prev => prev.filter((_, idx) => idx !== index));
+      const newAlarms = alarms.filter((_, idx) => idx !== index);
+      setAlarms(newAlarms);
+      
+      // Immediately save to database and sync with service worker
+      setTimeout(async () => {
+        try {
+          await database.saveAlarms(newAlarms);
+          
+          // Sync with service worker
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'SYNC_ALARMS',
+              data: { alarms: newAlarms }
+            });
+          }
+          
+          console.log('Alarm deleted from storage');
+        } catch (error) {
+          console.error('Failed to delete alarm from storage:', error);
+        }
+      }, 100);
     }
   }
 
@@ -486,12 +610,27 @@ export default function GeoAlarmApp() {
           const radiusInput = prompt("Enter radius in meters (default: 200):");
           const radius = parseInt(radiusInput) || 200;
           
+          // Ask for alarm type
+          const alarmType = confirm("One-time use alarm? (OK = Yes, Cancel = Persistent)") ? 'oneTime' : 'persistent';
+          
+          // Ask for auto-expire time if persistent
+          let expiresAt = null;
+          if (alarmType === 'persistent') {
+            const hours = prompt("Auto-delete after how many hours? (default: never, enter 0 for never):");
+            const hoursNum = parseInt(hours);
+            if (hoursNum && hoursNum > 0) {
+              expiresAt = new Date(Date.now() + (hoursNum * 60 * 60 * 1000)).toISOString();
+            }
+          }
+          
           setAlarms(prev => [...prev, { 
             name, 
             location,
             radius,
             triggered: false,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            type: alarmType,
+            expiresAt: expiresAt
           }]);
         }
       }
@@ -727,6 +866,14 @@ export default function GeoAlarmApp() {
                       <p className={styles.coordinates}>
                         {alarm.location[0].toFixed(4)}, {alarm.location[1].toFixed(4)}
                       </p>
+                      <p className={`${styles.alarmType} ${alarm.type === 'oneTime' ? styles.oneTime : styles.persistent}`}>
+                        {alarm.type === 'oneTime' ? '🔄 One-time use' : '🔁 Persistent'}
+                      </p>
+                      {alarm.expiresAt && (
+                        <p className={styles.expiresAt}>
+                          ⏰ Expires: {new Date(alarm.expiresAt).toLocaleString()}
+                        </p>
+                      )}
                       {alarm.triggered && (
                         <p className={styles.triggeredStatus}>🚨 TRIGGERED</p>
                       )}
