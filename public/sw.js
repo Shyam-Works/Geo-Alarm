@@ -4,6 +4,8 @@
 const CACHE_NAME = 'geoalarm-v2';
 const DB_NAME = 'GeoAlarmDB';
 const DB_VERSION = 2;
+const SW_VERSION = '2.1.0'; // Increment this when you want to force refresh
+const VERSION_KEY = 'sw_version';
 
 const urlsToCache = [
   '/',
@@ -50,7 +52,9 @@ self.addEventListener('activate', event => {
       }),
       // Take control of all clients
       self.clients.claim(),
-      // Initialize background sync
+      // Check version and cleanup stale data
+      checkVersion(),
+      // Initialize background sync with cleanup
       initializeBackgroundSync()
     ])
   );
@@ -83,23 +87,70 @@ self.addEventListener('sync', event => {
   }
 });
 
-// Initialize background sync
+// Version checking to force refresh stale data
+async function checkVersion() {
+  try {
+    const db = await openLocationDB();
+    const transaction = db.transaction(['settings'], 'readwrite');
+    const store = transaction.objectStore('settings');
+    
+    const versionRecord = await store.get(VERSION_KEY);
+    
+    if (!versionRecord || versionRecord.value !== SW_VERSION) {
+      console.log('Service worker version changed, clearing stale data');
+      
+      // Clear all stores except settings
+      const clearTransaction = db.transaction(['alarms', 'locations', 'syncQueue'], 'readwrite');
+      await clearTransaction.objectStore('alarms').clear();
+      await clearTransaction.objectStore('locations').clear();
+      await clearTransaction.objectStore('syncQueue').clear();
+      
+      // Update version
+      await store.put({ key: VERSION_KEY, value: SW_VERSION });
+      
+      // Reset local state
+      alarms = [];
+      currentLocation = null;
+      lastLocationUpdate = 0;
+    }
+  } catch (error) {
+    console.error('Version check failed:', error);
+  }
+}
+
+// Initialize background sync with cleanup
 async function initializeBackgroundSync() {
   try {
-    // Load alarms from IndexedDB
+    console.log('Initializing background sync with cleanup...');
+    
+    // Load and clean alarms
     const savedAlarms = await loadAlarmsFromDB();
-    if (savedAlarms.length > 0) {
-      alarms = savedAlarms;
-      console.log('Loaded alarms in service worker:', alarms.length);
+    alarms = savedAlarms;
+    
+    console.log(`Loaded ${alarms.length} valid alarms after cleanup`);
+    
+    // Clear any stale notification tags
+    if (self.registration && self.registration.getNotifications) {
+      const notifications = await self.registration.getNotifications();
+      const staleNotifications = notifications.filter(n => {
+        const notificationAge = Date.now() - (n.data?.timestamp || 0);
+        return notificationAge > 3600000; // 1 hour old
+      });
+      
+      staleNotifications.forEach(n => n.close());
+      console.log(`Cleared ${staleNotifications.length} stale notifications`);
     }
-
-    // Set up periodic background sync if supported
+    
+    // Clean location history
+    await cleanupLocationHistory();
+    
+    // Set up periodic background sync
     if (self.registration.sync) {
       await self.registration.sync.register('periodic-location-check');
     }
 
     isBackgroundSyncActive = true;
-    console.log('Background sync initialized');
+    console.log('Background sync initialized with cleanup complete');
   } catch (error) {
     console.error('Failed to initialize background sync:', error);
   }
@@ -254,6 +305,30 @@ async function cleanupOldLocations(store) {
   }
 }
 
+// Clean up location history
+async function cleanupLocationHistory() {
+  try {
+    const db = await openLocationDB();
+    const transaction = db.transaction(['locations'], 'readwrite');
+    const store = transaction.objectStore('locations');
+    
+    const allRecords = await getAllRecords(store);
+    const cutoff = Date.now() - 86400000; // 24 hours ago
+    
+    let deletedCount = 0;
+    for (const record of allRecords) {
+      if (record.timestamp < cutoff) {
+        await store.delete(record.timestamp);
+        deletedCount++;
+      }
+    }
+    
+    console.log(`Cleaned up ${deletedCount} old location records`);
+  } catch (error) {
+    console.error('Failed to cleanup location history:', error);
+  }
+}
+
 // Enhanced IndexedDB operations
 function openLocationDB() {
   return new Promise((resolve, reject) => {
@@ -328,14 +403,64 @@ async function checkAlarmTriggersEnhanced(position) {
   }
 }
 
-// Load alarms from IndexedDB
+// Load alarms from IndexedDB with expiration logic
 async function loadAlarmsFromDB() {
   try {
     const db = await openLocationDB();
-    const transaction = db.transaction(['alarms'], 'readonly');
+    const transaction = db.transaction(['alarms'], 'readwrite');
     const store = transaction.objectStore('alarms');
-    const alarms = await getAllRecords(store);
-    return alarms || [];
+    const allAlarms = await getAllRecords(store);
+    
+    const now = Date.now();
+    const validAlarms = [];
+    const expiredAlarms = [];
+    
+    for (const alarm of allAlarms) {
+      // Check if alarm has explicit expiration
+      if (alarm.expiresAt && new Date(alarm.expiresAt) < new Date()) {
+        expiredAlarms.push(alarm);
+        continue;
+      }
+      
+      // Auto-expire alarms older than 24 hours for one-time use
+      if (alarm.type === 'oneTime') {
+        const alarmAge = now - new Date(alarm.createdAt).getTime();
+        if (alarmAge > 86400000) { // 24 hours
+          expiredAlarms.push(alarm);
+          continue;
+        }
+      }
+      
+      // Auto-expire persistent alarms older than 7 days if no expiration set
+      if (alarm.type === 'persistent' && !alarm.expiresAt) {
+        const alarmAge = now - new Date(alarm.createdAt).getTime();
+        if (alarmAge > 604800000) { // 7 days
+          expiredAlarms.push(alarm);
+          continue;
+        }
+      }
+      
+      // Reset triggered status for persistent alarms after 1 hour
+      if (alarm.triggered && alarm.type === 'persistent') {
+        const triggerAge = now - (alarm.triggeredAt || 0);
+        if (triggerAge > 3600000) { // 1 hour
+          alarm.triggered = false;
+          delete alarm.triggeredAt;
+        }
+      }
+      
+      validAlarms.push(alarm);
+    }
+    
+    // Clean up expired alarms from storage
+    if (expiredAlarms.length > 0) {
+      console.log(`Cleaning up ${expiredAlarms.length} expired alarms`);
+      for (const expired of expiredAlarms) {
+        await store.delete(expired.createdAt);
+      }
+    }
+    
+    return validAlarms;
   } catch (error) {
     console.error('Failed to load alarms:', error);
     return [];
@@ -365,17 +490,31 @@ function calculateDistance(loc1, loc2) {
   return distance;
 }
 
-// Enhanced background alarm triggering
+// Enhanced background alarm triggering with proper state management
 async function triggerBackgroundAlarm(alarm) {
   try {
     console.log('Triggering background alarm:', alarm.name);
     
-    // Update alarm status in IndexedDB
+    const now = Date.now();
+    
+    // Check if alarm was already triggered recently (prevent spam)
+    if (alarm.triggeredAt && (now - alarm.triggeredAt) < 300000) { // 5 minutes
+      console.log('Alarm recently triggered, skipping');
+      return;
+    }
+    
+    // Update alarm status in IndexedDB with timestamp
     const db = await openLocationDB();
     const transaction = db.transaction(['alarms'], 'readwrite');
     const store = transaction.objectStore('alarms');
     
-    const updatedAlarm = { ...alarm, triggered: true };
+    const updatedAlarm = { 
+      ...alarm, 
+      triggered: true, 
+      triggeredAt: now,
+      lastTriggerLocation: currentLocation
+    };
+    
     await store.put(updatedAlarm);
     
     // Update local alarms array
@@ -409,7 +548,7 @@ async function triggerBackgroundAlarm(alarm) {
           alarmId: alarm.createdAt,
           alarmName: alarm.name,
           location: alarm.location,
-          timestamp: Date.now()
+          timestamp: now
         }
       });
     }
@@ -427,9 +566,23 @@ async function triggerBackgroundAlarm(alarm) {
     await addToSyncQueue('alarm_triggered', {
       alarmId: alarm.createdAt,
       alarmName: alarm.name,
-      timestamp: Date.now(),
+      timestamp: now,
       location: currentLocation
     });
+    
+    // Auto-delete one-time alarms after triggering
+    if (alarm.type === 'oneTime') {
+      setTimeout(async () => {
+        try {
+          await store.delete(alarm.createdAt);
+          const updatedAlarms = alarms.filter(a => a.createdAt !== alarm.createdAt);
+          alarms = updatedAlarms;
+          console.log('One-time alarm auto-deleted:', alarm.name);
+        } catch (error) {
+          console.error('Failed to auto-delete one-time alarm:', error);
+        }
+      }, 10000); // Delete after 10 seconds
+    }
     
   } catch (error) {
     console.error('Failed to trigger background alarm:', error);
@@ -547,6 +700,14 @@ self.addEventListener('message', event => {
     case 'STOP_BACKGROUND_TRACKING':
       stopBackgroundTracking();
       break;
+    case 'FORCE_CLEANUP':
+      // Manual cleanup trigger from main app
+      event.waitUntil(performFullCleanup());
+      break;
+    case 'CLEAR_ALL_DATA':
+      // Nuclear option - clear everything
+      event.waitUntil(clearAllServiceWorkerData());
+      break;
     case 'PING':
       event.ports[0].postMessage({ type: 'PONG', timestamp: Date.now() });
       break;
@@ -597,17 +758,18 @@ function stopBackgroundTracking() {
   isBackgroundSyncActive = false;
 }
 
-// Sync alarms to IndexedDB with better error handling
+// Enhanced sync alarms with proper cleanup
 async function syncAlarmsToIndexedDB(newAlarms) {
   try {
     const db = await openLocationDB();
     const transaction = db.transaction(['alarms'], 'readwrite');
     const store = transaction.objectStore('alarms');
     
-    // Clear existing alarms
+    // Clear ALL existing alarms first
     await store.clear();
+    console.log('Cleared all existing alarms from IndexedDB');
     
-    // Add current alarms
+    // Add only the new alarms from main app
     for (const alarm of newAlarms) {
       await store.add({
         ...alarm,
@@ -615,18 +777,54 @@ async function syncAlarmsToIndexedDB(newAlarms) {
       });
     }
     
-    // Update local alarms array
+    // Update local alarms array - REPLACE completely
     alarms = [...newAlarms];
     
-    console.log('Alarms synced to IndexedDB:', alarms.length);
+    console.log(`Synced ${alarms.length} fresh alarms to IndexedDB`);
     
-    // If we have alarms and background sync is active, start tracking
+    // Start background tracking only if we have valid alarms
     if (alarms.length > 0 && isBackgroundSyncActive) {
       startEnhancedBackgroundTracking();
+    } else if (alarms.length === 0) {
+      console.log('No alarms to track, stopping background sync');
+      isBackgroundSyncActive = false;
     }
     
   } catch (error) {
     console.error('Failed to sync alarms:', error);
+  }
+}
+
+// Manual cleanup functions
+async function performFullCleanup() {
+  try {
+    console.log('Performing full cleanup...');
+    await cleanupLocationHistory();
+    const validAlarms = await loadAlarmsFromDB();
+    alarms = validAlarms;
+    console.log(`Full cleanup complete. ${alarms.length} valid alarms remaining`);
+  } catch (error) {
+    console.error('Full cleanup failed:', error);
+  }
+}
+
+async function clearAllServiceWorkerData() {
+  try {
+    console.log('Clearing ALL service worker data...');
+    const db = await openLocationDB();
+    const transaction = db.transaction(['alarms', 'locations', 'syncQueue'], 'readwrite');
+    
+    await transaction.objectStore('alarms').clear();
+    await transaction.objectStore('locations').clear();
+    await transaction.objectStore('syncQueue').clear();
+    
+    alarms = [];
+    currentLocation = null;
+    lastLocationUpdate = 0;
+    
+    console.log('All service worker data cleared');
+  } catch (error) {
+    console.error('Failed to clear all data:', error);
   }
 }
 
@@ -662,4 +860,4 @@ setInterval(async () => {
   }
 }, 3600000); // Run every hour
 
-console.log('Enhanced GeoAlarm Service Worker loaded');
+console.log('Enhanced GeoAlarm Service Worker loaded with data cleanup');
