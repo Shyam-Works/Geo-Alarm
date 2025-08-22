@@ -535,6 +535,34 @@ export default function GeoAlarmApp() {
   };
 
   // Delete alarm function
+  const deleteAlarm = async (index) => {
+    if (index < 0 || index >= alarms.length){
+      return;
+    const alarm = alarms[index];
+    if (!alarm) return;
+    const confirmDelete = confirm(
+      `Are you sure you want to delete the alarm: ${alarm.name}?`
+    );
+    if (!confirmDelete) return;
+    setAlarms((prev) => prev.filter((_, i) => i !== index));
+    try {
+      await database.saveAlarms(alarms.filter((_, i) => i !== index));
+      if (
+        "serviceWorker" in navigator &&
+        navigator.serviceWorker.controller
+      ) {
+        navigator.serviceWorker.controller.postMessage({
+          type: "SYNC_ALARMS",
+          data: { alarms: alarms.filter((_, i) => i !== index) },
+        });
+        console.log("Alarm deleted from storage:", alarm.name);
+      }
+    } catch (error) {
+      console.error("Failed to delete alarm from storage:", error);
+    }
+  };
+}
+
   
 
   const handleRequestLocation = () => {
