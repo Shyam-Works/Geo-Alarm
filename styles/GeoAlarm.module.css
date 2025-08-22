@@ -40,14 +40,16 @@
 }
 
 .mobileSearchInput {
-  width: 70%;
+  width: 100%;
   padding: 10px 40px 10px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.8);
-  font-size: 14px;
+  font-size: 16px; /* Prevent zoom on iOS */
   outline: none;
   transition: all 0.2s ease;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .mobileSearchInput:focus {
@@ -903,17 +905,22 @@
 }
 
 .resetBtn {
-  padding: 6px 12px;
+  padding: 8px 16px; /* Larger padding for easier clicking */
   border: none;
   border-radius: 8px;
   background: #3b82f6;
   color: white;
-  font-size: 12px;
+  font-size: 14px; /* Slightly larger font */
   cursor: pointer;
   transition: background 0.2s;
   font-weight: 500;
   z-index: 1003; /* Ensure reset button is accessible */
   position: relative;
+  min-width: 80px; /* Minimum width for easier targeting */
+  min-height: 44px; /* Better touch target */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .resetBtn:hover {
@@ -921,18 +928,20 @@
 }
 
 .deleteBtn {
-  padding: 6px 8px;
+  padding: 8px 12px; /* Larger padding for easier clicking */
   border: none;
   border-radius: 8px;
   background: transparent;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px; /* Larger icon */
   transition: background 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1003; /* Ensure delete button is accessible */
   position: relative;
+  min-width: 44px; /* Better touch target */
+  min-height: 44px; /* Better touch target */
 }
 
 .deleteBtn:hover {
@@ -1044,12 +1053,22 @@
     display: block;
   }
 
-  /* Adjust map container for mobile */
+  /* Adjust map container for mobile with better padding */
   .mapContainer {
     margin-top: 76px; /* Account for top bar */
     margin-bottom: 80px; /* Account for bottom sheet */
     height: calc(100vh - 156px);
     z-index: 1; /* Lower z-index to ensure UI elements are on top */
+    padding: 16px; /* Add padding around map for better spacing */
+    box-sizing: border-box;
+  }
+
+  /* Map itself should fill the padded container */
+  #map {
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 12px; /* Rounded corners for better look */
+    overflow: hidden;
   }
 
   /* Map controls adjustments */
@@ -1389,49 +1408,1675 @@
   }
 }
 
-/* Additional fix for search overlay issue */
+/* Additional mobile fixes for better UX */
 @media (max-width: 768px) {
-  /* Create a search overlay backdrop that can be clicked to close */
-  .mobileSearchResults::before {
-    content: '';
+  /* Prevent zoom on input focus */
+  
+
+  /* Ensure viewport doesn't shift when keyboard appears */
+  .mobileTopBar {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.1);
-    z-index: -1;
+    z-index: 1001;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    /* Prevent content shift when keyboard appears */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
+
+  /* Better alarm card spacing and button sizing */
+  .alarmCard {
+    margin-bottom: 16px;
+    padding: 16px;
+  }
+
+  .alarmActions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  /* Larger touch targets for mobile */
+  .resetBtn {
+    padding: 12px 20px;
+    font-size: 14px;
+    min-width: 90px;
+    min-height: 48px;
+    border-radius: 10px;
+  }
+
+  .deleteBtn {
+    padding: 12px;
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 10px;
+    font-size: 20px;
+  }
+
+  /* Better visual feedback */
+  .resetBtn:active {
+    transform: scale(0.95);
+    background: #2563eb;
+  }
+
+  .deleteBtn:active {
+    transform: scale(0.95);
+    background: rgba(239, 68, 68, 0.2);
+  }
+
+  /* Triggered alarm card improvements */
+  .alarmCard.triggered {
+    border-color: #ef4444;
+    background: #fef2f2;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+    animation: triggerPulse 2s infinite;
+  }
+
+  .dark .alarmCard.triggered {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+  }
+
+  /* Ensure triggered status is more visible */
+  .triggeredStatus {
+    color: #ef4444;
+    font-weight: 700;
+    font-size: 14px;
+    animation: blink 1s infinite;
+    padding: 4px 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 6px;
+    display: inline-block;
+    margin-top: 8px;
+  }
+
+  /* Map padding adjustments for mobile */
+  .mapContainer {
+    margin-top: 76px;
+    margin-bottom: 80px;
+    height: calc(100vh - 156px);
+    z-index: 1;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+
+  #map {
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Map controls positioning */
+  .mapContainer .leaflet-control-zoom {
+    margin-top: 16px !important;
+    margin-right: 12px !important;
+  }
+
+  /* Ensure bottom sheet doesn't interfere with map interaction */
+  .mobileBottomSheet:not(.expanded) {
     pointer-events: none;
   }
 
-  .mobileSearchResults.show::before {
+  .mobileBottomSheet:not(.expanded) .bottomSheetHeader,
+  .mobileBottomSheet:not(.expanded) .bottomSheetHandle {
     pointer-events: auto;
   }
 
-  /* Ensure proper stacking context */
-  .mobileBottomSheet {
-    z-index: 1000;
+  .mobileBottomSheet.expanded {
+    pointer-events: auto;
+  }
+}.appContainer {
+  display: flex;
+  height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f8fafc;
+  color: #1e293b;
+  position: relative;
+}
+
+.appContainer.dark {
+  background: #0f172a;
+  color: #f1f5f9;
+}
+
+/* Mobile Top Search Bar */
+.mobileTopBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1001;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 12px 16px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+}
+
+.dark .mobileTopBar {
+  background: rgba(15, 23, 42, 0.95);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.mobileSearchWrapper {
+  flex: 1;
+  position: relative;
+}
+
+.mobileSearchInput {
+  width: 100%;
+  padding: 10px 40px 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.8);
+  font-size: 16px; /* Prevent zoom on iOS */
+  outline: none;
+  transition: all 0.2s ease;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.mobileSearchInput:focus {
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.dark .mobileSearchInput {
+  background: rgba(51, 65, 85, 0.8);
+  border-color: #4b5563;
+  color: #f1f5f9;
+}
+
+.dark .mobileSearchInput:focus {
+  background: #374151;
+  border-color: #3b82f6;
+}
+
+.mobileSearchBtn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mobileSearchBtn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.mobileSearchBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mobileTopControls {
+  display: flex;
+  gap: 8px;
+}
+
+.mobileControlBtn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.8);
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.mobileControlBtn:hover {
+  background: rgba(248, 250, 252, 1);
+  transform: scale(1.05);
+}
+
+.dark .mobileControlBtn {
+  background: rgba(51, 65, 85, 0.8);
+  border-color: #4b5563;
+}
+
+.dark .mobileControlBtn:hover {
+  background: rgba(51, 65, 85, 1);
+}
+
+.mobileControlBtn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+/* Mobile Bottom Sheet */
+.mobileBottomSheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: white;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.15);
+  transform: translateY(calc(100% - 80px));
+  transition: transform 0.3s ease;
+  display: none;
+  max-height: 80vh;
+}
+
+.dark .mobileBottomSheet {
+  background: #1e293b;
+  border-top: 1px solid #334155;
+}
+
+.mobileBottomSheet.expanded {
+  transform: translateY(0);
+}
+
+.bottomSheetHandle {
+  width: 40px;
+  height: 4px;
+  background: #d1d5db;
+  border-radius: 2px;
+  margin: 12px auto;
+  cursor: pointer;
+}
+
+.dark .bottomSheetHandle {
+  background: #6b7280;
+}
+
+.bottomSheetHeader {
+  padding: 0 20px 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dark .bottomSheetHeader {
+  border-color: #334155;
+}
+
+.bottomSheetTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bottomSheetStatus {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dark .bottomSheetStatus {
+  color: #94a3b8;
+}
+
+.bottomSheetContent {
+  padding: 0 20px 20px 20px;
+  overflow-y: auto;
+  max-height: calc(80vh - 120px);
+}
+
+/* Mobile Search Results - FIXED Z-INDEX */
+.mobileSearchResults {
+  position: fixed;
+  top: 76px;
+  left: 16px;
+  right: 16px;
+  z-index: 1002; /* Higher than top bar to ensure it's on top */
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow: hidden;
+  display: none;
+}
+
+.dark .mobileSearchResults {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.mobileSearchResults.show {
+  display: block;
+}
+
+/* Quick Actions in Bottom Sheet */
+.quickActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.quickActionBtn {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.quickActionBtn:hover {
+  background: #f1f5f9;
+  border-color: #3b82f6;
+}
+
+.dark .quickActionBtn {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.dark .quickActionBtn:hover {
+  background: #4b5563;
+  border-color: #3b82f6;
+}
+
+.quickActionBtn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.quickActionIcon {
+  font-size: 18px;
+}
+
+.quickActionLabel {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Background Tracking Toggle */
+.backgroundTrackingSection {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.dark .backgroundTrackingSection {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.toggleLabel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.toggleInput {
+  display: none;
+}
+
+.toggleSlider {
+  position: relative;
+  width: 48px;
+  height: 24px;
+  background: #d1d5db;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.toggleInput:checked + .toggleSlider {
+  background: #3b82f6;
+}
+
+.toggleSlider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggleInput:checked + .toggleSlider::before {
+  transform: translateX(24px);
+}
+
+/* Desktop Sidebar (hidden on mobile) */
+.sidebar {
+  width: 320px;
+  background: white;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 500;
+}
+
+.dark .sidebar {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.sidebarHeader {
+  padding: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dark .sidebarHeader {
+  border-color: #334155;
+}
+
+.appTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.appTitle h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.titleIcon {
+  font-size: 28px;
+}
+
+.headerControls {
+  display: flex;
+  gap: 8px;
+}
+
+.controlBtn {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.controlBtn:hover {
+  background: #e2e8f0;
+}
+
+.dark .controlBtn {
+  background: #374151;
+}
+
+.dark .controlBtn:hover {
+  background: #4b5563;
+}
+
+.controlBtn.active {
+  background: #3b82f6;
+  color: white;
+}
+
+/* Desktop Search Section */
+.searchSection {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  position: relative;
+}
+
+.dark .searchSection {
+  border-color: #334155;
+}
+
+.searchForm {
+  width: 100%;
+}
+
+.searchInputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.searchInputWrapper:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.dark .searchInputWrapper {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.searchInput {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  outline: none;
+  color: inherit;
+}
+
+.searchInput::placeholder {
+  color: #9ca3af;
+}
+
+.dark .searchInput::placeholder {
+  color: #6b7280;
+}
+
+.clearSearchBtn {
+  padding: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: color 0.2s;
+  font-size: 12px;
+}
+
+.clearSearchBtn:hover {
+  color: #ef4444;
+}
+
+.searchBtn {
+  padding: 10px 12px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  min-width: 40px;
+}
+
+.searchBtn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.searchBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.searchResults {
+  position: absolute;
+  top: 100%;
+  left: 24px;
+  right: 24px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 300px;
+  overflow: hidden;
+}
+
+.dark .searchResults {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.searchResultsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.dark .searchResultsHeader {
+  background: #4b5563;
+  border-color: #6b7280;
+  color: #d1d5db;
+}
+
+.closeResultsBtn {
+  padding: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: color 0.2s;
+  font-size: 14px;
+  z-index: 1003; /* Ensure close button is clickable */
+}
+
+.closeResultsBtn:hover {
+  color: #ef4444;
+}
+
+.searchResultsList {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.searchResultItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.searchResultItem:hover {
+  background: #f8fafc;
+}
+
+.searchResultItem:last-child {
+  border-bottom: none;
+}
+
+.dark .searchResultItem {
+  border-color: #4b5563;
+}
+
+.dark .searchResultItem:hover {
+  background: #4b5563;
+}
+
+.searchResultIcon {
+  font-size: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.searchResultText {
+  flex: 1;
+  min-width: 0;
+}
+
+.searchResultName {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #1e293b;
+  word-break: break-word;
+}
+
+.dark .searchResultName {
+  color: #f1f5f9;
+}
+
+.searchResultAddress {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dark .searchResultAddress {
+  color: #94a3b8;
+}
+
+.noResults {
+  padding: 24px 16px;
+  text-align: center;
+  color: #64748b;
+}
+
+.dark .noResults {
+  color: #94a3b8;
+}
+
+.noResults div {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.noResults small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.statusSection {
+  padding: 16px 0;
+}
+
+.locationBtn {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #3b82f6;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 12px;
+}
+
+.locationBtn:hover {
+  background: #2563eb;
+}
+
+.audioBtn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #f59e0b;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  z-index: 1003; /* Ensure audio button is accessible */
+  position: relative;
+}
+
+.audioBtn:hover {
+  background: #d97706;
+}
+
+.statusIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.dark .statusIndicator {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+.statusIndicator.active .statusDot {
+  background: #10b981;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.alarmsSection {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 16px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  padding: 0 4px;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 32px 16px;
+  color: #64748b;
+}
+
+.dark .emptyState {
+  color: #94a3b8;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.emptyState p {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+}
+
+.emptyState small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.alarmsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.alarmCard {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+.alarmCard:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.dark .alarmCard {
+  border-color: #374151;
+  background: #374151;
+}
+
+.alarmCard.triggered {
+  border-color: #ef4444;
+  background: #fef2f2;
+  animation: triggerPulse 2s infinite;
+}
+
+.dark .alarmCard.triggered {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes triggerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.alarmHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.alarmBell {
+  font-size: 16px;
+}
+
+.alarmHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.alarmDetails {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.dark .alarmDetails {
+  color: #94a3b8;
+}
+
+.alarmDetails p {
+  margin: 2px 0;
+}
+
+.coordinates {
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.alarmType {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.alarmType.oneTime {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.dark .alarmType.oneTime {
+  background: rgba(29, 78, 216, 0.2);
+  color: #93c5fd;
+}
+
+.alarmType.persistent {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.dark .alarmType.persistent {
+  background: rgba(124, 58, 237, 0.2);
+  color: #c4b5fd;
+}
+
+.expiresAt {
+  font-size: 11px !important;
+  color: #f59e0b !important;
+  font-weight: 500;
+}
+
+.triggeredStatus {
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 12px;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.distance {
+  font-weight: 500 !important;
+  color: #3b82f6 !important;
+}
+
+.alarmActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.resetBtn {
+  padding: 8px 16px; /* Larger padding for easier clicking */
+  border: none;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: white;
+  font-size: 14px; /* Slightly larger font */
+  cursor: pointer;
+  transition: background 0.2s;
+  font-weight: 500;
+  z-index: 1003; /* Ensure reset button is accessible */
+  position: relative;
+  min-width: 80px; /* Minimum width for easier targeting */
+  min-height: 44px; /* Better touch target */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resetBtn:hover {
+  background: #2563eb;
+}
+
+.deleteBtn {
+  padding: 8px 12px; /* Larger padding for easier clicking */
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px; /* Larger icon */
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1003; /* Ensure delete button is accessible */
+  position: relative;
+  min-width: 44px; /* Better touch target */
+  min-height: 44px; /* Better touch target */
+}
+
+.deleteBtn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.sidebarFooter {
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.dark .sidebarFooter {
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legendDot.userLocation {
+  background: #3b82f6;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.legendDot.alarmLocation {
+  background: #f59e0b;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px #f59e0b;
+}
+
+.mapContainer {
+  flex: 1;
+  position: relative;
+}
+
+.mapLoading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 1000;
+}
+
+.loadingSpinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Mobile Styles */
+@media (max-width: 768px) {
+  .appContainer {
+    flex-direction: column;
   }
 
+  /* Hide desktop sidebar on mobile */
+  .sidebar {
+    display: none;
+  }
+
+  /* Show mobile UI elements */
   .mobileTopBar {
-    z-index: 1001;
+    display: flex;
+  }
+
+  .mobileBottomSheet {
+    display: block;
   }
 
   .mobileSearchResults {
+    display: none;
+  }
+
+  .mobileSearchResults.show {
+    display: block;
+  }
+
+  /* Adjust map container for mobile with better padding */
+  .mapContainer {
+    margin-top: 76px; /* Account for top bar */
+    margin-bottom: 80px; /* Account for bottom sheet */
+    height: calc(100vh - 156px);
+    z-index: 1; /* Lower z-index to ensure UI elements are on top */
+    padding: 16px; /* Add padding around map for better spacing */
+    box-sizing: border-box;
+  }
+
+  /* Map itself should fill the padded container */
+  #map {
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 12px; /* Rounded corners for better look */
+    overflow: hidden;
+  }
+
+  /* Map controls adjustments */
+  .mapContainer .leaflet-control-container {
+    position: relative;
+    z-index: 500; /* Lower than UI elements but higher than map */
+  }
+
+  .mapContainer .leaflet-control-zoom {
+    margin-top: 20px !important;
+    margin-right: 16px !important;
+  }
+
+  .mapContainer .leaflet-control-attribution {
+    display: none; /* Hide attribution on mobile to save space */
+  }
+
+  /* Ensure audio and location buttons are accessible */
+  .bottomSheetContent .locationBtn,
+  .bottomSheetContent .audioBtn {
+    z-index: 1003;
+    position: relative;
+  }
+
+  /* Fix for search overlay covering buttons */
+  .bottomSheetContent {
+    z-index: 999; /* Lower than search results but higher than map */
+    position: relative;
+  }
+}
+
+/* Tablet Responsive */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .sidebar {
+    width: 280px;
+  }
+
+  .sidebarHeader {
+    padding: 20px;
+  }
+
+  .alarmsSection {
+    padding: 20px;
+  }
+}
+
+/* Very Small Mobile Screens */
+@media (max-width: 480px) {
+  .mobileTopBar {
+    padding: 10px 12px;
+  }
+
+  .mobileSearchInput {
+    font-size: 13px;
+    padding: 8px 36px 8px 10px;
+  }
+
+  .mobileControlBtn {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+
+  .bottomSheetContent {
+    padding: 0 16px 16px 16px;
+  }
+
+  .quickActions {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .quickActionBtn {
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  .alarmCard {
+    padding: 14px;
+  }
+
+  .alarmHeader h3 {
+    font-size: 15px;
+  }
+
+  .alarmDetails {
+    font-size: 12px;
+  }
+
+  /* Ensure search results don't cover buttons on small screens */
+  .mobileSearchResults {
+    max-height: 250px;
+  }
+}
+
+/* Landscape Mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+  .mobileBottomSheet {
+    max-height: 60vh;
+    transform: translateY(calc(100% - 60px));
+  }
+
+  .bottomSheetContent {
+    max-height: calc(60vh - 100px);
+  }
+
+  .mapContainer {
+    height: calc(100vh - 136px);
+  }
+
+  /* Ensure search results don't cover bottom sheet in landscape */
+  .mobileSearchResults {
+    max-height: 200px;
+  }
+}
+
+/* Floating Action Button for creating alarms on mobile - FIXED Z-INDEX */
+.mobileFab {
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transition: all 0.3s ease;
+  z-index: 1001; /* Higher than bottom sheet but lower than search results */
+  display: none;
+}
+
+.mobileFab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+}
+
+.mobileFab:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .mobileFab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Improved animations and micro-interactions */
+.alarmCard {
+  position: relative;
+  overflow: hidden;
+}
+
+.alarmCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transition: left 0.5s;
+  pointer-events: none;
+}
+
+.alarmCard:hover::before {
+  left: 100%;
+}
+
+.dark .alarmCard::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+}
+
+/* Enhanced touch targets for mobile */
+@media (max-width: 768px) {
+  .resetBtn, .deleteBtn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .quickActionBtn {
+    min-height: 60px;
+  }
+
+  .searchResultItem {
+    min-height: 60px;
+    padding: 16px;
+  }
+
+  .toggleLabel {
+    min-height: 48px;
+  }
+
+  /* Fixed positioning for better accessibility */
+  .bottomSheetContent .statusSection {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px solid #e2e8f0;
+    position: relative;
+    z-index: 999; /* Ensure content is accessible */
+  }
+
+  .dark .bottomSheetContent .statusSection {
+    background: #374151;
+    border-color: #4b5563;
+  }
+
+  /* Ensure all interactive elements in bottom sheet are accessible */
+  .bottomSheetContent * {
+    position: relative;
+    z-index: 999;
+  }
+
+  /* Override for search results to be on top */
+  .mobileSearchResults * {
     z-index: 1002;
   }
+}
 
-  /* Fix for any content that might be behind search */
-  .mobileFab {
+/* Smooth scrolling for better UX */
+.searchResultsList,
+.bottomSheetContent,
+.alarmsSection {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Custom scrollbar styling */
+.searchResultsList::-webkit-scrollbar,
+.bottomSheetContent::-webkit-scrollbar,
+.alarmsSection::-webkit-scrollbar {
+  width: 4px;
+}
+
+.searchResultsList::-webkit-scrollbar-track,
+.bottomSheetContent::-webkit-scrollbar-track,
+.alarmsSection::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.searchResultsList::-webkit-scrollbar-thumb,
+.bottomSheetContent::-webkit-scrollbar-thumb,
+.alarmsSection::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+
+.dark .searchResultsList::-webkit-scrollbar-thumb,
+.dark .bottomSheetContent::-webkit-scrollbar-thumb,
+.dark .alarmsSection::-webkit-scrollbar-thumb {
+  background: #6b7280;
+}
+
+/* Status indicators in mobile top bar */
+.mobileTopBar .statusIndicator {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.mobileTopBar .statusDot {
+  width: 6px;
+  height: 6px;
+}
+
+/* Loading states */
+.mobileSearchBtn.loading {
+  animation: spin 1s linear infinite;
+}
+
+/* Improved button styles */
+.quickActionBtn:active {
+  transform: scale(0.98);
+}
+
+.mobileControlBtn:active {
+  transform: scale(0.95);
+}
+
+.locationBtn:active,
+.audioBtn:active {
+  transform: scale(0.98);
+}
+
+/* Better spacing for mobile */
+@media (max-width: 768px) {
+  .backgroundTrackingSection {
+    margin: 12px 0;
+    padding: 12px;
+  }
+
+  .backgroundTrackingSection small {
+    margin-top: 4px;
+    display: block;
+    font-size: 11px;
+    color: #9ca3af;
+  }
+
+  .dark .backgroundTrackingSection small {
+    color: #6b7280;
+  }
+}
+
+/* Focus styles for accessibility */
+.mobileSearchInput:focus,
+.quickActionBtn:focus,
+.toggleSlider:focus,
+.locationBtn:focus,
+.audioBtn:focus,
+.resetBtn:focus,
+.deleteBtn:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .alarmCard {
+    border-width: 2px;
+  }
+
+  .statusDot {
+    border: 1px solid currentColor;
+  }
+
+  .toggleSlider {
+    border: 1px solid currentColor;
+  }
+}
+
+/* Additional mobile fixes for better UX */
+@media (max-width: 768px) {
+  /* Prevent zoom on input focus */
+  
+  /* Ensure mobile top bar is always visible 
+
+  /* Ensure viewport doesn't shift when keyboard appears */
+  .mobileTopBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 1001;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    /* Prevent content shift when keyboard appears */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
 
-  /* Ensure map controls are accessible but below UI */
-  #map .leaflet-control-container {
-    z-index: 500 !important;
+  /* Better alarm card spacing and button sizing */
+  .alarmCard {
+    margin-bottom: 16px;
+    padding: 16px;
   }
 
-  #map .leaflet-control-zoom {
-    z-index: 500 !important;
+  .alarmActions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  /* Larger touch targets for mobile */
+  .resetBtn {
+    padding: 12px 20px;
+    font-size: 14px;
+    min-width: 90px;
+    min-height: 48px;
+    border-radius: 10px;
+  }
+
+  .deleteBtn {
+    padding: 12px;
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 10px;
+    font-size: 20px;
+  }
+
+  /* Better visual feedback */
+  .resetBtn:active {
+    transform: scale(0.95);
+    background: #2563eb;
+  }
+
+  .deleteBtn:active {
+    transform: scale(0.95);
+    background: rgba(239, 68, 68, 0.2);
+  }
+
+  /* Triggered alarm card improvements */
+  .alarmCard.triggered {
+    border-color: #ef4444;
+    background: #fef2f2;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+    animation: triggerPulse 2s infinite;
+  }
+
+  .dark .alarmCard.triggered {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+  }
+
+  /* Ensure triggered status is more visible */
+  .triggeredStatus {
+    color: #ef4444;
+    font-weight: 700;
+    font-size: 14px;
+    animation: blink 1s infinite;
+    padding: 4px 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 6px;
+    display: inline-block;
+    margin-top: 8px;
+  }
+
+  /* Map padding adjustments for mobile */
+  .mapContainer {
+    margin-top: 78px;
+    margin-bottom: 80px;
+    height: calc(100vh - 156px);
+    z-index: 1;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+
+  #map {
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Map controls positioning */
+  .mapContainer .leaflet-control-zoom {
+    margin-top: 16px !important;
+    margin-right: 12px !important;
+  }
+
+  /* Ensure bottom sheet doesn't interfere with map interaction */
+  .mobileBottomSheet:not(.expanded) {
+    pointer-events: none;
+  }
+
+  .mobileBottomSheet:not(.expanded) .bottomSheetHeader,
+  .mobileBottomSheet:not(.expanded) .bottomSheetHandle {
+    pointer-events: auto;
+  }
+
+  .mobileBottomSheet.expanded {
+    pointer-events: auto;
   }
 }
