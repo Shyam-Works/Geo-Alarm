@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import { 
-  initializeAudio, 
-  requestLocationAccess, 
-  getDistance, 
+import {
+  initializeAudio,
+  requestLocationAccess,
+  getDistance,
   playVoiceAlert,
   createUserLocationIcon,
   createAlarmIcon,
-  searchLocation 
-} from '../util/getUtils';
-import styles from '../styles/GeoAlarm.module.css';
-import { GeoAlarmDB, ServiceWorkerManager, LocationManager } from '../util/db';
+  searchLocation,
+} from "../util/getUtils";
+import styles from "../styles/GeoAlarm.module.css";
+import { GeoAlarmDB, ServiceWorkerManager, LocationManager } from "../util/db";
 
 export default function GeoAlarmApp() {
   const [userLocation, setUserLocation] = useState([43.6532, -79.3832]); // Toronto default
@@ -22,20 +22,21 @@ export default function GeoAlarmApp() {
   const [map, setMap] = useState(null);
   const [userMarker, setUserMarker] = useState(null);
   const [alarmMarkers, setAlarmMarkers] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
-  
+
   // Mobile UI states
   const [bottomSheetExpanded, setBottomSheetExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  
+
   // Background tracking states
-  const [backgroundTrackingEnabled, setBackgroundTrackingEnabled] = useState(false);
+  const [backgroundTrackingEnabled, setBackgroundTrackingEnabled] =
+    useState(false);
   const [locationWatchId, setLocationWatchId] = useState(null);
   const [lastLocationUpdate, setLastLocationUpdate] = useState(null);
-  
+
   // Initialize database and managers
   const [database] = useState(() => new GeoAlarmDB());
   const [swManager] = useState(() => new ServiceWorkerManager());
@@ -46,24 +47,24 @@ export default function GeoAlarmApp() {
     const checkMobile = () => {
       setIsMobile(window.innerWidth <= 768);
     };
-    
+
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener("resize", checkMobile);
+
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
   // Initialize map when component mounts
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
+    if (typeof window === "undefined") return;
+
     setMapReady(true);
-    
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
     script.onload = initMap;
     document.head.appendChild(script);
-    
+
     return () => {
       if (document.head.contains(script)) {
         document.head.removeChild(script);
@@ -74,61 +75,74 @@ export default function GeoAlarmApp() {
   const initMap = () => {
     if (!window.L || map) return;
 
-    const mapInstance = window.L.map('map', {
+    const mapInstance = window.L.map("map", {
       zoomControl: true,
-      attributionControl: !isMobile // Hide attribution on mobile
+      attributionControl: !isMobile, // Hide attribution on mobile
     }).setView(userLocation, 13);
-    
-    mapInstance.zoomControl.setPosition('topright');
-    
-    const tileLayer = darkMode 
-      ? window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        })
-      : window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        });
-    
+
+    mapInstance.zoomControl.setPosition("topright");
+
+    const tileLayer = darkMode
+      ? window.L.tileLayer(
+          "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+          {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          }
+        )
+      : window.L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          }
+        );
+
     tileLayer.addTo(mapInstance);
-    mapInstance.on('click', handleMapClick);
+    mapInstance.on("click", handleMapClick);
     setMap(mapInstance);
   };
 
   // Enhanced service worker registration and messaging
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
+    if ("serviceWorker" in navigator) {
       registerServiceWorker();
     }
   }, []);
 
   const registerServiceWorker = async () => {
     try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      console.log('Service Worker registered:', registration);
-      
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      console.log("Service Worker registered:", registration);
+
       // Listen for messages from service worker
-      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
-      
+      navigator.serviceWorker.addEventListener(
+        "message",
+        handleServiceWorkerMessage
+      );
+
       // Request notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
+      if ("Notification" in window && Notification.permission === "default") {
         await Notification.requestPermission();
       }
-      
+
       return registration;
     } catch (error) {
-      console.error('Service Worker registration failed:', error);
+      console.error("Service Worker registration failed:", error);
     }
   };
 
   const handleServiceWorkerMessage = (event) => {
     const { type, alarm } = event.data;
-    
-    if (type === 'ALARM_TRIGGERED') {
-      console.log('Alarm triggered in background:', alarm);
+
+    if (type === "ALARM_TRIGGERED") {
+      console.log("Alarm triggered in background:", alarm);
       // Update the alarm state to reflect the trigger
-      setAlarms(prev => prev.map(a => 
-        a.createdAt === alarm.id ? { ...a, triggered: true } : a
-      ));
+      setAlarms((prev) =>
+        prev.map((a) =>
+          a.createdAt === alarm.id ? { ...a, triggered: true } : a
+        )
+      );
     }
   };
 
@@ -153,30 +167,44 @@ export default function GeoAlarmApp() {
     const options = {
       enableHighAccuracy: true,
       timeout: 5000,
-      maximumAge: 10000
+      maximumAge: 10000,
     };
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        const newLocation = [position.coords.latitude, position.coords.longitude];
+        const newLocation = [
+          position.coords.latitude,
+          position.coords.longitude,
+        ];
         const previousLocation = userLocation;
-        
-        if (previousLocation && getDistance(previousLocation, newLocation) < 5) {
+
+        if (
+          previousLocation &&
+          getDistance(previousLocation, newLocation) < 5
+        ) {
           return;
         }
-        
+
         setUserLocation(newLocation);
         setLastLocationUpdate(Date.now());
         syncLocationWithServiceWorker(newLocation);
-        
-        console.log('Location updated:', newLocation, 'Accuracy:', position.coords.accuracy);
+
+        console.log(
+          "Location updated:",
+          newLocation,
+          "Accuracy:",
+          position.coords.accuracy
+        );
       },
       (error) => {
-        console.error('Location tracking error:', error);
+        console.error("Location tracking error:", error);
         if (error.code === error.TIMEOUT) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              const newLocation = [position.coords.latitude, position.coords.longitude];
+              const newLocation = [
+                position.coords.latitude,
+                position.coords.longitude,
+              ];
               setUserLocation(newLocation);
               setLastLocationUpdate(Date.now());
             },
@@ -201,10 +229,10 @@ export default function GeoAlarmApp() {
   };
 
   const syncLocationWithServiceWorker = (location) => {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({
-        type: 'LOCATION_UPDATE',
-        data: { location, timestamp: Date.now() }
+        type: "LOCATION_UPDATE",
+        data: { location, timestamp: Date.now() },
       });
     }
   };
@@ -212,16 +240,16 @@ export default function GeoAlarmApp() {
   // Load saved data on mount
   useEffect(() => {
     if (!database) return;
-    
+
     const loadSavedData = async () => {
       try {
         const savedAlarms = await database.loadAlarms();
         const savedSettings = await database.loadSettings();
-        
+
         if (savedAlarms.length > 0) {
           setAlarms(savedAlarms);
         }
-        
+
         if (savedSettings.darkMode !== undefined) {
           setDarkMode(savedSettings.darkMode);
         }
@@ -232,33 +260,38 @@ export default function GeoAlarmApp() {
           setBackgroundTrackingEnabled(savedSettings.backgroundTrackingEnabled);
         }
       } catch (error) {
-        console.error('Failed to load saved data:', error);
+        console.error("Failed to load saved data:", error);
       }
     };
-    
+
     loadSavedData();
   }, [database]);
 
   // Save alarms and sync with service worker
   useEffect(() => {
     if (!database || alarms.length === 0) return;
-    
+
     const saveAlarms = async () => {
       try {
         await database.saveAlarms(alarms);
-        
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+
+        if (
+          "serviceWorker" in navigator &&
+          navigator.serviceWorker.controller
+        ) {
           navigator.serviceWorker.controller.postMessage({
-            type: 'SYNC_ALARMS',
-            data: { alarms }
+            type: "SYNC_ALARMS",
+            data: { alarms },
           });
         }
       } catch (error) {
-        console.error('Failed to save alarms:', error);
+        console.error("Failed to save alarms:", error);
       }
     };
-    
-    const hasActiveAlarms = alarms.some(alarm => !alarm.triggered || alarm.type === 'persistent');
+
+    const hasActiveAlarms = alarms.some(
+      (alarm) => !alarm.triggered || alarm.type === "persistent"
+    );
     if (hasActiveAlarms) {
       saveAlarms();
     }
@@ -267,41 +300,55 @@ export default function GeoAlarmApp() {
   // Save settings whenever they change
   useEffect(() => {
     if (!database) return;
-    
+
     const saveSettings = async () => {
       try {
         await database.saveSettings({
           darkMode,
           soundEnabled,
           audioInitialized,
-          backgroundTrackingEnabled
+          backgroundTrackingEnabled,
         });
       } catch (error) {
-        console.error('Failed to save settings:', error);
+        console.error("Failed to save settings:", error);
       }
     };
-    
+
     saveSettings();
-  }, [darkMode, soundEnabled, audioInitialized, backgroundTrackingEnabled, database]);
+  }, [
+    darkMode,
+    soundEnabled,
+    audioInitialized,
+    backgroundTrackingEnabled,
+    database,
+  ]);
 
   // Update tile layer when dark mode changes
   useEffect(() => {
     if (!map) return;
-    
-    map.eachLayer(layer => {
+
+    map.eachLayer((layer) => {
       if (layer._url) {
         map.removeLayer(layer);
       }
     });
-    
-    const tileLayer = darkMode 
-      ? window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        })
-      : window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        });
-    
+
+    const tileLayer = darkMode
+      ? window.L.tileLayer(
+          "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+          {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          }
+        )
+      : window.L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          }
+        );
+
     tileLayer.addTo(map);
   }, [darkMode, map]);
 
@@ -314,10 +361,10 @@ export default function GeoAlarmApp() {
     }
 
     const newUserMarker = window.L.marker(userLocation, {
-      icon: createUserLocationIcon()
+      icon: createUserLocationIcon(),
     }).addTo(map);
 
-    newUserMarker.bindPopup('Your current location');
+    newUserMarker.bindPopup("Your current location");
     setUserMarker(newUserMarker);
     map.setView(userLocation, map.getZoom());
   }, [userLocation, map]);
@@ -326,30 +373,30 @@ export default function GeoAlarmApp() {
   useEffect(() => {
     if (!map || !window.L) return;
 
-    alarmMarkers.forEach(marker => {
+    alarmMarkers.forEach((marker) => {
       map.removeLayer(marker.marker);
       map.removeLayer(marker.circle);
     });
 
     const newMarkers = alarms.map((alarm, i) => {
       const marker = window.L.marker(alarm.location, {
-        icon: createAlarmIcon(alarm.triggered)
+        icon: createAlarmIcon(alarm.triggered),
       }).addTo(map);
 
       marker.bindPopup(`
         <div>
           <strong>${alarm.name}</strong><br/>
           Radius: ${alarm.radius}m<br/>
-          Status: ${alarm.triggered ? '🚨 TRIGGERED' : '✅ Active'}
+          Status: ${alarm.triggered ? "🚨 TRIGGERED" : "✅ Active"}
         </div>
       `);
 
       const circle = window.L.circle(alarm.location, {
         radius: alarm.radius,
-        color: alarm.triggered ? '#ef4444' : '#fbbf24',
-        fillColor: alarm.triggered ? '#ef4444' : '#fbbf24',
+        color: alarm.triggered ? "#ef4444" : "#fbbf24",
+        fillColor: alarm.triggered ? "#ef4444" : "#fbbf24",
         fillOpacity: 0.2,
-        weight: 2
+        weight: 2,
       }).addTo(map);
 
       return { marker, circle, alarm };
@@ -361,46 +408,59 @@ export default function GeoAlarmApp() {
   // Enhanced alarm trigger checking
   useEffect(() => {
     if (!userLocation || !Array.isArray(alarms) || alarms.length === 0) return;
-    
+
     try {
       const now = new Date();
-      const activeAlarms = alarms.filter(alarm => {
+      const activeAlarms = alarms.filter((alarm) => {
         if (alarm.expiresAt && new Date(alarm.expiresAt) < now) {
           return false;
         }
         return true;
       });
-      
+
       if (activeAlarms.length !== alarms.length) {
         setAlarms(activeAlarms);
-        
+
         setTimeout(async () => {
           try {
             await database.saveAlarms(activeAlarms);
-            
-            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+
+            if (
+              "serviceWorker" in navigator &&
+              navigator.serviceWorker.controller
+            ) {
               navigator.serviceWorker.controller.postMessage({
-                type: 'SYNC_ALARMS',
-                data: { alarms: activeAlarms }
+                type: "SYNC_ALARMS",
+                data: { alarms: activeAlarms },
               });
             }
-            
-            console.log('Expired alarms cleaned from storage');
+
+            console.log("Expired alarms cleaned from storage");
           } catch (error) {
-            console.error('Failed to clean expired alarms from storage:', error);
+            console.error(
+              "Failed to clean expired alarms from storage:",
+              error
+            );
           }
         }, 100);
-        
+
         return;
       }
-      
+
       activeAlarms.forEach((alarm, index) => {
-        if (alarm && !alarm.triggered && alarm.location && Array.isArray(alarm.location)) {
+        if (
+          alarm &&
+          !alarm.triggered &&
+          alarm.location &&
+          Array.isArray(alarm.location)
+        ) {
           const distance = getDistance(userLocation, alarm.location);
-          console.log(`Distance to ${alarm.name}: ${distance}m (threshold: ${alarm.radius}m)`);
-          
+          console.log(
+            `Distance to ${alarm.name}: ${distance}m (threshold: ${alarm.radius}m)`
+          );
+
           const triggerRadius = alarm.radius + 10;
-          
+
           if (distance <= triggerRadius) {
             console.log(`Triggering alarm: ${alarm.name}`);
             triggerAlarm(index);
@@ -412,16 +472,74 @@ export default function GeoAlarmApp() {
     }
   }, [userLocation, alarms]);
 
-  const handleInitializeAudio = async () => {
-    const result = await initializeAudio(audioInitialized, soundEnabled);
-    setAudioInitialized(result);
+  // Handle map click to create new alarm
+  const handleMapClick = (e) => {
+    if (!map || !e.latlng) return;
+    const { lat, lng } = e.latlng;
+    const location = [lat, lng];
+    const name = prompt("Enter alarm name:", `Alarm at ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+    if (!name) return;
+    const radiusInput = prompt("Enter radius in meters (default: 200):");
+    const radius = parseInt(radiusInput) || 200;
+    const alarmType = confirm(
+      "One-time use alarm? (OK = Yes, Cancel = Persistent)"
+    )
+
+      ? "oneTime" : "persistent";
+    let expiresAt = null;
+    if (alarmType === "persistent") {
+      const hours = prompt(
+        "Auto-delete after how many hours? (default: never, enter 0 for never):"
+      );
+      const hoursNum = parseInt(hours);
+      if (hoursNum && hoursNum > 0) {
+        expiresAt = new Date(Date.now() + hoursNum * 60 * 60 * 1000).toISOString();
+      }
+    }
+    const newAlarm = {
+      name,
+      location,
+      radius,
+      triggered: false,
+      createdAt: new Date().toISOString(),
+      type: alarmType,
+      expiresAt: expiresAt,
+    };
+    setAlarms((prev) => [...prev, newAlarm]);
+    setTimeout(() => {
+      if (map) {
+        map.setView(location, 15);
+      }
+      const marker = window.L.marker(location, {
+        icon: createAlarmIcon(false),
+      }).addTo(map);
+      marker.bindPopup(`
+        <div>
+          <strong>${name}</strong><br/>
+          Radius: ${radius}m<br/>
+          Status: ✅ Active
+        </div>
+      `);
+      const circle = window.L.circle(location, {
+        radius,
+        color: "#fbbf24",
+        fillColor: "#fbbf24",
+        fillOpacity: 0.2,
+        weight: 2,
+      }).addTo(map);
+      setAlarmMarkers((prev) => [
+        ...prev,
+        { marker, circle, alarm: newAlarm },
+      ]);
+    }, 500);
   };
 
+  // Delete alarm function
+  
+
   const handleRequestLocation = () => {
-    requestLocationAccess(
-      setIsTracking,
-      setUserLocation,
-      () => setIsTracking(false)
+    requestLocationAccess(setIsTracking, setUserLocation, () =>
+      setIsTracking(false)
     );
   };
 
@@ -429,125 +547,199 @@ export default function GeoAlarmApp() {
     setBackgroundTrackingEnabled(!backgroundTrackingEnabled);
   };
 
-  function triggerAlarm(index) {
+  // Updated triggerAlarm function - replace in your main component
+
+  async function triggerAlarm(index) {
     try {
       const alarm = alarms[index];
       if (!alarm || alarm.triggered) return;
-      
-      setAlarms(prev => prev.map((a, i) => (i === index ? { ...a, triggered: true } : a)));
-      
-      const alarmName = alarm.name || 'Unknown Location';
-      
-      if (soundEnabled && audioInitialized) {
-        playVoiceAlert(alarmName);
+
+      console.log("Triggering alarm:", alarm.name);
+
+      // Update alarm state immediately
+      setAlarms((prev) =>
+        prev.map((a, i) => (i === index ? { ...a, triggered: true } : a))
+      );
+
+      const alarmName = alarm.name || "Unknown Location";
+
+      // For iOS: Always try to initialize audio first if not already done
+      if (!audioInitialized && soundEnabled) {
+        console.log("Audio not initialized, attempting to initialize...");
+        try {
+          const initialized = await initializeAudio(false, true);
+          if (initialized) {
+            setAudioInitialized(true);
+          }
+        } catch (error) {
+          console.error("Failed to initialize audio during trigger:", error);
+        }
       }
 
+      // Play sound with increased delay for iOS
+      if (soundEnabled) {
+        // iOS needs more time to prepare audio context
+        const delay = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 300 : 100;
+
+        setTimeout(async () => {
+          try {
+            await playVoiceAlert(alarmName);
+          } catch (error) {
+            console.error("Voice alert failed in trigger:", error);
+          }
+        }, delay);
+      }
+
+      // Enhanced notification for iOS
       try {
-        if (typeof window !== 'undefined' && 'Notification' in window) {
-          if (Notification.permission === 'granted') {
-            const notification = new Notification('🚨 Geo-Alarm Triggered!', {
+        if (typeof window !== "undefined" && "Notification" in window) {
+          if (Notification.permission === "granted") {
+            const notification = new Notification("🚨 Geo-Alarm Triggered!", {
               body: `You're near: ${alarmName}`,
-              icon: '/favicon.ico',
+              icon: "/favicon.ico",
               tag: `alarm-${index}`,
               requireInteraction: true,
               vibrate: [200, 100, 200, 100, 200],
-              silent: false
+              silent: false,
+              // iOS-specific options
+              sound: "default",
             });
 
-            setTimeout(() => notification.close(), 10000);
+            // Auto-close after 10 seconds
+            setTimeout(() => {
+              try {
+                notification.close();
+              } catch (e) {
+                // Ignore close errors
+              }
+            }, 10000);
+
+            // Handle notification click
+            notification.onclick = () => {
+              window.focus();
+              notification.close();
+            };
+          } else if (Notification.permission === "default") {
+            // Request permission if not yet asked
+            const permission = await Notification.requestPermission();
+            if (permission === "granted") {
+              // Retry notification
+              setTimeout(() => triggerAlarm(index), 100);
+              return;
+            }
           }
         }
       } catch (notificationError) {
         console.log("Notification failed:", notificationError);
       }
 
-      if ('vibrator' in navigator || 'vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200, 100, 200]);
+      // Enhanced vibration for iOS
+      try {
+        if ("vibrate" in navigator) {
+          // iOS-friendly vibration pattern
+          navigator.vibrate([200, 100, 200, 100, 200, 100, 400]);
+        }
+      } catch (vibrateError) {
+        console.log("Vibration failed:", vibrateError);
       }
 
-      if (alarm.type === 'oneTime') {
+      // Handle one-time alarms
+      if (alarm.type === "oneTime") {
         setTimeout(async () => {
-          const newAlarms = alarms.filter((_, i) => i !== index);
-          setAlarms(newAlarms);
-          
           try {
+            const newAlarms = alarms.filter((_, i) => i !== index);
+            setAlarms(newAlarms);
+
             await database.saveAlarms(newAlarms);
-            
-            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+
+            if (
+              "serviceWorker" in navigator &&
+              navigator.serviceWorker.controller
+            ) {
               navigator.serviceWorker.controller.postMessage({
-                type: 'SYNC_ALARMS',
-                data: { alarms: newAlarms }
+                type: "SYNC_ALARMS",
+                data: { alarms: newAlarms },
               });
             }
-            
-            console.log('One-time alarm deleted from storage:', alarmName);
-          } catch (error) {
-            console.error('Failed to delete alarm from storage:', error);
-          }
-        }, 3000);
-      }
 
+            console.log("One-time alarm deleted from storage:", alarmName);
+          } catch (error) {
+            console.error("Failed to delete alarm from storage:", error);
+          }
+        }, 8000);
+      }
     } catch (error) {
       console.error("Error in triggerAlarm:", error);
     }
   }
 
-  function handleMapClick(e) {
-    const name = prompt("Enter alarm name:");
-    if (!name) return;
-    
-    const radiusInput = prompt("Enter radius in meters (default: 200):");
-    const radius = parseInt(radiusInput) || 200;
-    
-    const alarmType = confirm("One-time use alarm? (OK = Yes, Cancel = Persistent)") ? 'oneTime' : 'persistent';
-    
-    let expiresAt = null;
-    if (alarmType === 'persistent') {
-      const hours = prompt("Auto-delete after how many hours? (default: never, enter 0 for never):");
-      const hoursNum = parseInt(hours);
-      if (hoursNum && hoursNum > 0) {
-        expiresAt = new Date(Date.now() + (hoursNum * 60 * 60 * 1000)).toISOString();
+  // Also update the resetAlarm function for better iOS audio support
+  function resetAlarm(index) {
+    setAlarms((prev) =>
+      prev.map((a, i) => (i === index ? { ...a, triggered: false } : a))
+    );
+
+    // Enhanced audio feedback for reset
+    if (soundEnabled) {
+      const alarm = alarms[index];
+      if (alarm) {
+        const delay = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 200 : 100;
+
+        setTimeout(async () => {
+          try {
+            // If audio not initialized, try to initialize
+            if (!audioInitialized) {
+              const initialized = await initializeAudio(false, true);
+              if (initialized) {
+                setAudioInitialized(true);
+              }
+            }
+
+            await playVoiceAlert(`${alarm.name} reset`);
+          } catch (error) {
+            console.error("Reset audio feedback failed:", error);
+          }
+        }, delay);
       }
     }
-    
-    setAlarms(prev => [...prev, { 
-      name, 
-      location: [e.latlng.lat, e.latlng.lng], 
-      radius,
-      triggered: false,
-      createdAt: new Date().toISOString(),
-      type: alarmType,
-      expiresAt: expiresAt
-    }]);
   }
 
-  function deleteAlarm(index) {
-    if (confirm("Are you sure you want to delete this alarm?")) {
-      const newAlarms = alarms.filter((_, idx) => idx !== index);
-      setAlarms(newAlarms);
-      
-      setTimeout(async () => {
-        try {
-          await database.saveAlarms(newAlarms);
-          
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-              type: 'SYNC_ALARMS',
-              data: { alarms: newAlarms }
-            });
-          }
-          
-          console.log('Alarm deleted from storage');
-        } catch (error) {
-          console.error('Failed to delete alarm from storage:', error);
+  // Enhanced audio initialization with iOS-specific handling
+  const handleInitializeAudio = async () => {
+    try {
+      console.log("Manual audio initialization requested");
+
+      // For iOS, we need to ensure this is called from a user gesture
+      const result = await initializeAudio(audioInitialized, soundEnabled);
+      setAudioInitialized(result);
+
+      if (result) {
+        console.log("Audio successfully initialized");
+
+        // Show success feedback
+        if ("vibrate" in navigator) {
+          navigator.vibrate([100, 50, 100]);
         }
-      }, 100);
-    }
-  }
 
-  function resetAlarm(index) {
-    setAlarms(prev => prev.map((a, i) => (i === index ? { ...a, triggered: false } : a)));
-  }
+        // Test audio immediately
+        setTimeout(async () => {
+          try {
+            await playVoiceAlert("Audio is now ready");
+          } catch (error) {
+            console.error("Test audio failed:", error);
+          }
+        }, 200);
+      } else {
+        console.warn("Audio initialization failed");
+        alert(
+          "Audio initialization failed. Please try again or check your browser settings."
+        );
+      }
+    } catch (error) {
+      console.error("Manual audio initialization error:", error);
+      alert("Audio setup failed. This may be due to browser restrictions.");
+    }
+  };
 
   // Search functionality
   const handleSearch = async (e) => {
@@ -560,8 +752,8 @@ export default function GeoAlarmApp() {
       setSearchResults(results);
       setShowSearchResults(true);
     } catch (error) {
-      console.error('Search failed:', error);
-      alert('Search failed. Please try again.');
+      console.error("Search failed:", error);
+      alert("Search failed. Please try again.");
     } finally {
       setIsSearching(false);
     }
@@ -570,56 +762,80 @@ export default function GeoAlarmApp() {
   const selectSearchResult = (result) => {
     const { lat, lon, display_name } = result;
     const location = [parseFloat(lat), parseFloat(lon)];
-    
+
     if (map) {
       map.setView(location, 15);
     }
-    
-    setSearchQuery('');
+
+    setSearchQuery("");
     setSearchResults([]);
     setShowSearchResults(false);
-    
+
     setTimeout(() => {
       const createAlarm = confirm(`Create alarm at: ${display_name}?`);
       if (createAlarm) {
-        const name = prompt("Enter alarm name:", display_name.split(',')[0]);
+        const name = prompt("Enter alarm name:", display_name.split(",")[0]);
         if (name) {
           const radiusInput = prompt("Enter radius in meters (default: 200):");
           const radius = parseInt(radiusInput) || 200;
-          
-          const alarmType = confirm("One-time use alarm? (OK = Yes, Cancel = Persistent)") ? 'oneTime' : 'persistent';
-          
+
+          const alarmType = confirm(
+            "One-time use alarm? (OK = Yes, Cancel = Persistent)"
+          )
+            ? "oneTime"
+            : "persistent";
+
           let expiresAt = null;
-          if (alarmType === 'persistent') {
-            const hours = prompt("Auto-delete after how many hours? (default: never, enter 0 for never):");
+          if (alarmType === "persistent") {
+            const hours = prompt(
+              "Auto-delete after how many hours? (default: never, enter 0 for never):"
+            );
             const hoursNum = parseInt(hours);
             if (hoursNum && hoursNum > 0) {
-              expiresAt = new Date(Date.now() + (hoursNum * 60 * 60 * 1000)).toISOString();
+              expiresAt = new Date(
+                Date.now() + hoursNum * 60 * 60 * 1000
+              ).toISOString();
             }
           }
-          
-          setAlarms(prev => [...prev, { 
-            name, 
-            location,
-            radius,
-            triggered: false,
-            createdAt: new Date().toISOString(),
-            type: alarmType,
-            expiresAt: expiresAt
-          }]);
+
+          setAlarms((prev) => [
+            ...prev,
+            {
+              name,
+              location,
+              radius,
+              triggered: false,
+              createdAt: new Date().toISOString(),
+              type: alarmType,
+              expiresAt: expiresAt,
+            },
+          ]);
         }
       }
     }, 500);
   };
 
   const clearSearch = () => {
-    setSearchQuery('');
+    setSearchQuery("");
     setSearchResults([]);
     setShowSearchResults(false);
   };
 
   const toggleBottomSheet = () => {
     setBottomSheetExpanded(!bottomSheetExpanded);
+  };
+
+  // Handle search input focus to prevent viewport zoom
+  const handleSearchFocus = (e) => {
+    // Prevent zoom on iOS by ensuring font-size is 16px
+    e.target.style.fontSize = "16px";
+
+    // Scroll to top to ensure search is visible
+    if (isMobile) {
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }, 300);
+    }
   };
 
   const renderDesktopSidebar = () => (
@@ -633,7 +849,9 @@ export default function GeoAlarmApp() {
         <div className={styles.headerControls}>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`${styles.controlBtn} ${soundEnabled ? styles.active : ''}`}
+            className={`${styles.controlBtn} ${
+              soundEnabled ? styles.active : ""
+            }`}
             title="Toggle Sound"
           >
             🔊
@@ -643,7 +861,7 @@ export default function GeoAlarmApp() {
             className={styles.controlBtn}
             title="Toggle Theme"
           >
-            {darkMode ? '☀️' : '🌙'}
+            {darkMode ? "☀️" : "🌙"}
           </button>
         </div>
       </div>
@@ -673,11 +891,11 @@ export default function GeoAlarmApp() {
               disabled={isSearching || !searchQuery.trim()}
               className={styles.searchBtn}
             >
-              {isSearching ? '🔄' : '🔍'}
+              {isSearching ? "🔄" : "🔍"}
             </button>
           </div>
         </form>
-        
+
         {/* Desktop Search Results */}
         {showSearchResults && (
           <div className={styles.searchResults}>
@@ -685,7 +903,7 @@ export default function GeoAlarmApp() {
               <>
                 <div className={styles.searchResultsHeader}>
                   <span>Search Results</span>
-                  <button 
+                  <button
                     onClick={() => setShowSearchResults(false)}
                     className={styles.closeResultsBtn}
                   >
@@ -702,7 +920,7 @@ export default function GeoAlarmApp() {
                       <div className={styles.searchResultIcon}>📍</div>
                       <div className={styles.searchResultText}>
                         <div className={styles.searchResultName}>
-                          {result.display_name.split(',')[0]}
+                          {result.display_name.split(",")[0]}
                         </div>
                         <div className={styles.searchResultAddress}>
                           {result.display_name}
@@ -724,18 +942,28 @@ export default function GeoAlarmApp() {
 
       {/* Desktop Status */}
       <div className={styles.statusSection}>
-        <div className={`${styles.statusIndicator} ${isTracking ? styles.active : styles.inactive}`}>
+        <div
+          className={`${styles.statusIndicator} ${
+            isTracking ? styles.active : styles.inactive
+          }`}
+        >
           <div className={styles.statusDot}></div>
           <span>
-            {isTracking ? 'Location tracking active' : 'Location tracking disabled'}
+            {isTracking
+              ? "Location tracking active"
+              : "Location tracking disabled"}
             {lastLocationUpdate && (
-              <small> • Last update: {new Date(lastLocationUpdate).toLocaleTimeString()}</small>
+              <small>
+                {" "}
+                • Last update:{" "}
+                {new Date(lastLocationUpdate).toLocaleTimeString()}
+              </small>
             )}
           </span>
         </div>
-        
+
         {!isTracking && (
-          <button 
+          <button
             onClick={handleRequestLocation}
             className={styles.locationBtn}
           >
@@ -757,12 +985,9 @@ export default function GeoAlarmApp() {
           </label>
           <small>Keep tracking even when app is in background</small>
         </div>
-        
+
         {!audioInitialized && isTracking && soundEnabled && (
-          <button 
-            onClick={handleInitializeAudio}
-            className={styles.audioBtn}
-          >
+          <button onClick={handleInitializeAudio} className={styles.audioBtn}>
             🔊 Enable Sound Alerts
           </button>
         )}
@@ -770,9 +995,7 @@ export default function GeoAlarmApp() {
 
       {/* Desktop Alarms */}
       <div className={styles.alarmsSection}>
-        <h2 className={styles.sectionTitle}>
-          🔔 My Alarms ({alarms.length})
-        </h2>
+        <h2 className={styles.sectionTitle}>🔔 My Alarms ({alarms.length})</h2>
 
         {alarms.length === 0 && (
           <div className={styles.emptyState}>
@@ -784,21 +1007,39 @@ export default function GeoAlarmApp() {
 
         <div className={styles.alarmsList}>
           {alarms.map((alarm, i) => (
-            <div key={i} className={`${styles.alarmCard} ${alarm.triggered ? styles.triggered : ''}`}>
+            <div
+              key={i}
+              className={`${styles.alarmCard} ${
+                alarm.triggered ? styles.triggered : ""
+              }`}
+            >
               <div className={styles.alarmInfo}>
                 <div className={styles.alarmHeader}>
-                  <span className={`${styles.alarmBell} ${alarm.triggered ? styles.triggered : ''}`}>
-                    {alarm.triggered ? '🚨' : '🔔'}
+                  <span
+                    className={`${styles.alarmBell} ${
+                      alarm.triggered ? styles.triggered : ""
+                    }`}
+                  >
+                    {alarm.triggered ? "🚨" : "🔔"}
                   </span>
                   <h3>{alarm.name}</h3>
                 </div>
                 <div className={styles.alarmDetails}>
                   <p>Radius: {alarm.radius}m</p>
                   <p className={styles.coordinates}>
-                    {alarm.location[0].toFixed(4)}, {alarm.location[1].toFixed(4)}
+                    {alarm.location[0].toFixed(4)},{" "}
+                    {alarm.location[1].toFixed(4)}
                   </p>
-                  <p className={`${styles.alarmType} ${alarm.type === 'oneTime' ? styles.oneTime : styles.persistent}`}>
-                    {alarm.type === 'oneTime' ? '🔄 One-time use' : '🔁 Persistent'}
+                  <p
+                    className={`${styles.alarmType} ${
+                      alarm.type === "oneTime"
+                        ? styles.oneTime
+                        : styles.persistent
+                    }`}
+                  >
+                    {alarm.type === "oneTime"
+                      ? "🔄 One-time use"
+                      : "🔁 Persistent"}
                   </p>
                   {alarm.expiresAt && (
                     <p className={styles.expiresAt}>
@@ -810,12 +1051,13 @@ export default function GeoAlarmApp() {
                   )}
                   {userLocation && (
                     <p className={styles.distance}>
-                      Distance: {Math.round(getDistance(userLocation, alarm.location))}m
+                      Distance:{" "}
+                      {Math.round(getDistance(userLocation, alarm.location))}m
                     </p>
                   )}
                 </div>
               </div>
-              
+
               <div className={styles.alarmActions}>
                 {alarm.triggered && (
                   <button
@@ -846,11 +1088,16 @@ export default function GeoAlarmApp() {
             <span>Your location</span>
           </div>
           <div className={styles.legendItem}>
-            <div className={`${styles.legendDot} ${styles.alarmLocation}`}></div>
+            <div
+              className={`${styles.legendDot} ${styles.alarmLocation}`}
+            ></div>
             <span>Alarm location</span>
           </div>
         </div>
-        <p>Click anywhere on the map to create a new geo-alarm, or use search to find locations</p>
+        <p>
+          Click anywhere on the map to create a new geo-alarm, or use search to
+          find locations
+        </p>
       </div>
     </div>
   );
@@ -866,22 +1113,27 @@ export default function GeoAlarmApp() {
               placeholder="Search places..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={handleSearchFocus}
               className={styles.mobileSearchInput}
             />
             <button
               type="submit"
               disabled={isSearching || !searchQuery.trim()}
-              className={`${styles.mobileSearchBtn} ${isSearching ? styles.loading : ''}`}
+              className={`${styles.mobileSearchBtn} ${
+                isSearching ? styles.loading : ""
+              }`}
             >
-              {isSearching ? '🔄' : '🔍'}
+              {isSearching ? "🔄" : "🔍"}
             </button>
           </form>
         </div>
-        
+
         <div className={styles.mobileTopControls}>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`${styles.mobileControlBtn} ${soundEnabled ? styles.active : ''}`}
+            className={`${styles.mobileControlBtn} ${
+              soundEnabled ? styles.active : ""
+            }`}
             title="Toggle Sound"
           >
             🔊
@@ -891,19 +1143,23 @@ export default function GeoAlarmApp() {
             className={styles.mobileControlBtn}
             title="Toggle Theme"
           >
-            {darkMode ? '☀️' : '🌙'}
+            {darkMode ? "☀️" : "🌙"}
           </button>
         </div>
       </div>
 
       {/* Mobile Search Results */}
       {showSearchResults && (
-        <div className={`${styles.mobileSearchResults} ${showSearchResults ? styles.show : ''}`}>
+        <div
+          className={`${styles.mobileSearchResults} ${
+            showSearchResults ? styles.show : ""
+          }`}
+        >
           {searchResults.length > 0 ? (
             <>
               <div className={styles.searchResultsHeader}>
                 <span>Search Results</span>
-                <button 
+                <button
                   onClick={() => setShowSearchResults(false)}
                   className={styles.closeResultsBtn}
                 >
@@ -920,7 +1176,7 @@ export default function GeoAlarmApp() {
                     <div className={styles.searchResultIcon}>📍</div>
                     <div className={styles.searchResultText}>
                       <div className={styles.searchResultName}>
-                        {result.display_name.split(',')[0]}
+                        {result.display_name.split(",")[0]}
                       </div>
                       <div className={styles.searchResultAddress}>
                         {result.display_name}
@@ -940,27 +1196,44 @@ export default function GeoAlarmApp() {
       )}
 
       {/* Mobile Floating Action Button */}
-      <button 
+      <button
         className={styles.mobileFab}
-        onClick={() => alert('Tap anywhere on the map to create an alarm')}
+        onClick={() => alert("Tap anywhere on the map to create an alarm")}
         title="Create new alarm"
       >
         +
       </button>
 
       {/* Mobile Bottom Sheet */}
-      <div className={`${styles.mobileBottomSheet} ${bottomSheetExpanded ? styles.expanded : ''}`}>
-        <div className={styles.bottomSheetHandle} onClick={toggleBottomSheet}></div>
-        
+      <div
+        className={`${styles.mobileBottomSheet} ${
+          bottomSheetExpanded ? styles.expanded : ""
+        }`}
+      >
+        <div
+          className={styles.bottomSheetHandle}
+          onClick={toggleBottomSheet}
+        ></div>
+
         <div className={styles.bottomSheetHeader} onClick={toggleBottomSheet}>
           <h2 className={styles.bottomSheetTitle}>
             🧭 GeoAlarm
             <span className={styles.bottomSheetStatus}>
-              <div className={`${styles.statusDot} ${isTracking ? styles.active : ''}`}></div>
-              {isTracking ? 'Active' : 'Inactive'} • {alarms.length} alarms
+              <div
+                className={`${styles.statusDot} ${
+                  isTracking ? styles.active : ""
+                }`}
+              ></div>
+              {isTracking ? "Active" : "Inactive"} • {alarms.length} alarms
             </span>
           </h2>
-          <span style={{ fontSize: '18px', transform: bottomSheetExpanded ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.3s' }}>
+          <span
+            style={{
+              fontSize: "18px",
+              transform: bottomSheetExpanded ? "rotate(180deg)" : "rotate(0)",
+              transition: "transform 0.3s",
+            }}
+          >
             ▲
           </span>
         </div>
@@ -969,7 +1242,7 @@ export default function GeoAlarmApp() {
           {/* Quick Actions */}
           <div className={styles.quickActions}>
             {!isTracking ? (
-              <button 
+              <button
                 onClick={handleRequestLocation}
                 className={styles.quickActionBtn}
               >
@@ -982,9 +1255,9 @@ export default function GeoAlarmApp() {
                 <div className={styles.quickActionLabel}>Location Active</div>
               </div>
             )}
-            
+
             {!audioInitialized && isTracking && soundEnabled ? (
-              <button 
+              <button
                 onClick={handleInitializeAudio}
                 className={styles.quickActionBtn}
               >
@@ -992,21 +1265,39 @@ export default function GeoAlarmApp() {
                 <div className={styles.quickActionLabel}>Enable Audio</div>
               </button>
             ) : (
-              <div className={`${styles.quickActionBtn} ${audioInitialized ? styles.active : ''}`}>
-                <div className={styles.quickActionIcon}>{audioInitialized ? '🔊' : '🔇'}</div>
-                <div className={styles.quickActionLabel}>{audioInitialized ? 'Audio Ready' : 'Audio Off'}</div>
+              <div
+                className={`${styles.quickActionBtn} ${
+                  audioInitialized ? styles.active : ""
+                }`}
+              >
+                <div className={styles.quickActionIcon}>
+                  {audioInitialized ? "🔊" : "🔇"}
+                </div>
+                <div className={styles.quickActionLabel}>
+                  {audioInitialized ? "Audio Ready" : "Audio Off"}
+                </div>
               </div>
             )}
           </div>
 
           {/* Status Section */}
           <div className={styles.statusSection}>
-            <div className={`${styles.statusIndicator} ${isTracking ? styles.active : styles.inactive}`}>
+            <div
+              className={`${styles.statusIndicator} ${
+                isTracking ? styles.active : styles.inactive
+              }`}
+            >
               <div className={styles.statusDot}></div>
               <span>
-                {isTracking ? 'Location tracking active' : 'Location tracking disabled'}
+                {isTracking
+                  ? "Location tracking active"
+                  : "Location tracking disabled"}
                 {lastLocationUpdate && (
-                  <small> • Last update: {new Date(lastLocationUpdate).toLocaleTimeString()}</small>
+                  <small>
+                    {" "}
+                    • Last update:{" "}
+                    {new Date(lastLocationUpdate).toLocaleTimeString()}
+                  </small>
                 )}
               </span>
             </div>
@@ -1043,25 +1334,44 @@ export default function GeoAlarmApp() {
 
             <div className={styles.alarmsList}>
               {alarms.map((alarm, i) => (
-                <div key={i} className={`${styles.alarmCard} ${alarm.triggered ? styles.triggered : ''}`}>
+                <div
+                  key={i}
+                  className={`${styles.alarmCard} ${
+                    alarm.triggered ? styles.triggered : ""
+                  }`}
+                >
                   <div className={styles.alarmInfo}>
                     <div className={styles.alarmHeader}>
-                      <span className={`${styles.alarmBell} ${alarm.triggered ? styles.triggered : ''}`}>
-                        {alarm.triggered ? '🚨' : '🔔'}
+                      <span
+                        className={`${styles.alarmBell} ${
+                          alarm.triggered ? styles.triggered : ""
+                        }`}
+                      >
+                        {alarm.triggered ? "🚨" : "🔔"}
                       </span>
                       <h3>{alarm.name}</h3>
                     </div>
                     <div className={styles.alarmDetails}>
                       <p>Radius: {alarm.radius}m</p>
                       <p className={styles.coordinates}>
-                        {alarm.location[0].toFixed(4)}, {alarm.location[1].toFixed(4)}
+                        {alarm.location[0].toFixed(4)},{" "}
+                        {alarm.location[1].toFixed(4)}
                       </p>
-                      <p className={`${styles.alarmType} ${alarm.type === 'oneTime' ? styles.oneTime : styles.persistent}`}>
-                        {alarm.type === 'oneTime' ? '🔄 One-time use' : '🔁 Persistent'}
+                      <p
+                        className={`${styles.alarmType} ${
+                          alarm.type === "oneTime"
+                            ? styles.oneTime
+                            : styles.persistent
+                        }`}
+                      >
+                        {alarm.type === "oneTime"
+                          ? "🔄 One-time use"
+                          : "🔁 Persistent"}
                       </p>
                       {alarm.expiresAt && (
                         <p className={styles.expiresAt}>
-                          ⏰ Expires: {new Date(alarm.expiresAt).toLocaleString()}
+                          ⏰ Expires:{" "}
+                          {new Date(alarm.expiresAt).toLocaleString()}
                         </p>
                       )}
                       {alarm.triggered && (
@@ -1069,12 +1379,16 @@ export default function GeoAlarmApp() {
                       )}
                       {userLocation && (
                         <p className={styles.distance}>
-                          Distance: {Math.round(getDistance(userLocation, alarm.location))}m
+                          Distance:{" "}
+                          {Math.round(
+                            getDistance(userLocation, alarm.location)
+                          )}
+                          m
                         </p>
                       )}
                     </div>
                   </div>
-                  
+
                   <div className={styles.alarmActions}>
                     {alarm.triggered && (
                       <button
@@ -1110,7 +1424,7 @@ export default function GeoAlarmApp() {
         crossOrigin=""
       />
 
-      <div className={`${styles.appContainer} ${darkMode ? styles.dark : ''}`}>
+      <div className={`${styles.appContainer} ${darkMode ? styles.dark : ""}`}>
         {/* Render different UI based on screen size */}
         {!isMobile && renderDesktopSidebar()}
         {isMobile && renderMobileUI()}
@@ -1118,7 +1432,7 @@ export default function GeoAlarmApp() {
         {/* Map Container */}
         <div className={styles.mapContainer}>
           <div id="map" style={{ height: "100%", width: "100%" }}></div>
-          
+
           {!mapReady && (
             <div className={styles.mapLoading}>
               <div className={styles.loadingSpinner}></div>
