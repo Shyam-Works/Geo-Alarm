@@ -38,7 +38,9 @@ export default function GeoAlarmApp() {
   const [lastLocationUpdate, setLastLocationUpdate] = useState(null);
   const [locationAccuracy, setLocationAccuracy] = useState(null);
   const [highAccuracyMode, setHighAccuracyMode] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true); // Always enabled by default
+  const [refreshInterval, setRefreshInterval] = useState(3); // Default to 3 seconds for live tracking
+  const autoRefreshIntervalRef = useRef(null);
 
   // Refs for preventing duplicate triggers
   const triggeredAlarmsRef = useRef(new Set());
@@ -244,11 +246,44 @@ export default function GeoAlarmApp() {
     setIsTracking(false);
   }, [locationWatchId]);
 
-  // Enhanced background location tracking
+  // Auto-refresh location effect - Always active for live tracking
+  useEffect(() => {
+    if (backgroundTrackingEnabled) {
+      // Clear any existing interval
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+      
+      console.log(`Starting live location tracking - updating every ${refreshInterval} seconds`);
+      
+      // Start with immediate location update
+      refreshLocation();
+      
+      autoRefreshIntervalRef.current = setInterval(() => {
+        console.log("Auto-updating location for live tracking...");
+        refreshLocation();
+      }, refreshInterval * 1000);
+    } else {
+      // Clear interval when background tracking is disabled
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+    };
+  }, [backgroundTrackingEnabled, refreshInterval]);
+
+  // Enhanced background location tracking - starts automatically for live tracking
   useEffect(() => {
     if (!navigator.geolocation) return;
 
-    // Only start tracking when backgroundTrackingEnabled changes to true
+    // Always start tracking when component mounts or when backgroundTrackingEnabled changes to true
     if (backgroundTrackingEnabled && !isTracking) {
       startContinuousLocationTracking();
     } else if (!backgroundTrackingEnabled && isTracking) {
@@ -271,41 +306,47 @@ export default function GeoAlarmApp() {
     }
   };
 
-  const refreshLocation = () => {
+  const refreshLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      alert("Geolocation is not supported by this browser.");
+      console.error("Geolocation is not supported by this browser.");
       return;
     }
 
-    console.log("Manually refreshing location...");
-    setIsRefreshing(true);
-    
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const newLocation = [position.coords.latitude, position.coords.longitude];
-        console.log("Manual location update:", newLocation);
+        const currentTime = Date.now();
+        
+        // Only update if location has changed significantly (more than 5 meters) or it's been more than 30 seconds
+        if (userLocation) {
+          const distance = getDistance(userLocation, newLocation);
+          const timeSinceLastUpdate = currentTime - (lastLocationUpdate || 0);
+          
+          if (distance < 5 && timeSinceLastUpdate < 30000) {
+            console.log(`Location unchanged (${distance.toFixed(1)}m), skipping update`);
+            return;
+          }
+        }
+        
+        console.log(`Live location update: ${newLocation[0].toFixed(6)}, ${newLocation[1].toFixed(6)}, accuracy: ${position.coords.accuracy}m`);
         setUserLocation(newLocation);
         setLocationAccuracy(position.coords.accuracy);
-        setLastLocationUpdate(Date.now());
-        setIsRefreshing(false);
+        setLastLocationUpdate(currentTime);
         
-        // Visual feedback for mobile users
-        if (isMobile && "vibrate" in navigator) {
-          navigator.vibrate([50, 50, 50]);
-        }
+        // Sync with service worker
+        syncLocationWithServiceWorker(newLocation);
       },
       (error) => {
-        console.error("Manual location refresh failed:", error);
-        setIsRefreshing(false);
-        alert(`Location error: ${error.message}`);
+        console.error("Live location update failed:", error);
+        // Don't show alerts for automatic updates, just log the error
       },
       {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
+        enableHighAccuracy: highAccuracyMode,
+        timeout: 8000,
+        maximumAge: 1000 // Always get fresh location for live tracking
       }
     );
-  };
+  }, [userLocation, lastLocationUpdate, highAccuracyMode]);
 
   // Load saved data on mount
   useEffect(() => {
@@ -328,6 +369,9 @@ export default function GeoAlarmApp() {
         }
         if (savedSettings.backgroundTrackingEnabled !== undefined) {
           setBackgroundTrackingEnabled(savedSettings.backgroundTrackingEnabled);
+        }
+        if (savedSettings.refreshInterval !== undefined) {
+          setRefreshInterval(savedSettings.refreshInterval);
         }
       } catch (error) {
         console.error("Failed to load saved data:", error);
@@ -378,6 +422,7 @@ export default function GeoAlarmApp() {
           soundEnabled,
           audioInitialized,
           backgroundTrackingEnabled,
+          refreshInterval,
         });
       } catch (error) {
         console.error("Failed to save settings:", error);
@@ -390,6 +435,7 @@ export default function GeoAlarmApp() {
     soundEnabled,
     audioInitialized,
     backgroundTrackingEnabled,
+    refreshInterval,
     database,
   ]);
 
@@ -1193,14 +1239,29 @@ export default function GeoAlarmApp() {
           <small>Uses more battery but more precise location</small>
         </div>
 
-        {/* Desktop Refresh Location Button */}
-        <button 
-          onClick={refreshLocation} 
-          className={`locationBtn ${isRefreshing ? "refreshing" : ""}`}
-          disabled={isRefreshing}
-        >
-          {isRefreshing ? "🔄 Refreshing..." : "🔄 Refresh Location"}
-        </button>
+        {/* Live tracking interval control */}
+        {backgroundTrackingEnabled && (
+          <div className="backgroundTrackingSection">
+            <label style={{ fontSize: '14px', marginBottom: '8px', display: 'block', fontWeight: '500' }}>
+              Live tracking interval: {refreshInterval} seconds
+            </label>
+            <input
+              type="range"
+              min="3"
+              max="15"
+              value={refreshInterval}
+              onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#666', marginTop: '4px' }}>
+              <span>Fast (3s)</span>
+              <span>Moderate (15s)</span>
+            </div>
+            <small style={{ color: '#059669' }}>
+              📍 Location updates automatically every {refreshInterval} seconds
+            </small>
+          </div>
+        )}
       </div>
 
       {/* Desktop Alarms */}
@@ -1449,7 +1510,7 @@ export default function GeoAlarmApp() {
             ) : (
               <div className="quickActionBtn active">
                 <div className="quickActionIcon">✅</div>
-                <div className="quickActionLabel">Location Active</div>
+                <div className="quickActionLabel">Live Tracking Active</div>
               </div>
             )}
 
@@ -1474,19 +1535,15 @@ export default function GeoAlarmApp() {
               </div>
             )}
 
-            {/* Mobile Refresh Location Button */}
-            <button
-              onClick={refreshLocation}
-              className={`quickActionBtn ${isRefreshing ? "refreshing" : ""}`}
-              disabled={isRefreshing}
-            >
-              <div className="quickActionIcon">
-                {isRefreshing ? "🔄" : "🔄"}
+            {/* Live tracking status indicator */}
+            {backgroundTrackingEnabled && (
+              <div className="quickActionBtn active">
+                <div className="quickActionIcon">🔄</div>
+                <div className="quickActionLabel">
+                  Auto-update: {refreshInterval}s
+                </div>
               </div>
-              <div className="quickActionLabel">
-                {isRefreshing ? "Refreshing..." : "Refresh Location"}
-              </div>
-            </button>
+            )}
           </div>
 
           {isIOS && (
@@ -1560,6 +1617,49 @@ export default function GeoAlarmApp() {
               </label>
               <small>Uses more battery but more precise location</small>
             </div>
+
+            {/* Live tracking interval control for mobile */}
+            {backgroundTrackingEnabled && (
+              <div className="backgroundTrackingSection">
+                <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '8px' }}>
+                  <label style={{ fontSize: '14px', marginBottom: '8px', display: 'block', fontWeight: '500' }}>
+                    Live tracking: Updates every {refreshInterval} seconds
+                  </label>
+                  <input
+                    type="range"
+                    min="3"
+                    max="15"
+                    value={refreshInterval}
+                    onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
+                    style={{ 
+                      width: '100%', 
+                      height: '6px',
+                      background: '#ddd',
+                      borderRadius: '3px',
+                      outline: 'none'
+                    }}
+                  />
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    fontSize: '12px', 
+                    color: '#666',
+                    marginTop: '4px'
+                  }}>
+                    <span>Fast (3s)</span>
+                    <span>Moderate (15s)</span>
+                  </div>
+                  <div style={{ 
+                    fontSize: '12px', 
+                    color: '#059669', 
+                    marginTop: '8px',
+                    textAlign: 'center'
+                  }}>
+                    📍 Your location updates automatically as you move
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Mobile Alarms */}
