@@ -32,11 +32,13 @@ export default function GeoAlarmApp() {
   const [isMobile, setIsMobile] = useState(false);
 
   // Enhanced location tracking states
-  const [backgroundTrackingEnabled, setBackgroundTrackingEnabled] = useState(false);
+  const [backgroundTrackingEnabled, setBackgroundTrackingEnabled] =
+    useState(false);
   const [locationWatchId, setLocationWatchId] = useState(null);
   const [lastLocationUpdate, setLastLocationUpdate] = useState(null);
   const [locationAccuracy, setLocationAccuracy] = useState(null);
   const [highAccuracyMode, setHighAccuracyMode] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Refs for preventing duplicate triggers
   const triggeredAlarmsRef = useRef(new Set());
@@ -51,6 +53,28 @@ export default function GeoAlarmApp() {
   // Detect iOS
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
+  // Add to your useEffect on component mount
+  useEffect(() => {
+    // Force cleanup on app start
+    if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "FORCE_CLEANUP",
+      });
+    }
+  }, []);
+
+  // Also add a function to manually clear everything if needed
+  const clearAllData = async () => {
+    if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "CLEAR_ALL_DATA",
+      });
+    }
+
+    // Clear local state
+    setAlarms([]);
+    await database.clearAllData(); // You'll need to add this method
+  };
   // Check if mobile on mount and resize
   useEffect(() => {
     const checkMobile = () => {
@@ -154,115 +178,63 @@ export default function GeoAlarmApp() {
 
   // Enhanced location tracking with better accuracy
   const startContinuousLocationTracking = useCallback(() => {
-    if (locationWatchId) {
-      navigator.geolocation.clearWatch(locationWatchId);
-    }
+  // Clear any existing watch
+  if (locationWatchId) {
+    navigator.geolocation.clearWatch(locationWatchId);
+    setLocationWatchId(null);
+  }
 
-    const options = {
-      enableHighAccuracy: highAccuracyMode,
-      timeout: isIOS ? 15000 : 10000, // Longer timeout for iOS
-      maximumAge: isIOS ? 5000 : 10000, // Shorter max age for iOS
-    };
+  const options = {
+    enableHighAccuracy: highAccuracyMode,
+    timeout: isIOS ? 15000 : 10000,
+    maximumAge: isIOS ? 1000 : 5000, // Reduce maximumAge for more frequent updates
+  };
 
-    console.log("Starting location tracking with options:", options);
+  console.log("Starting location tracking with options:", options);
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude, accuracy, speed } = position.coords;
-        const newLocation = [latitude, longitude];
-        const timestamp = Date.now();
+  const watchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const { latitude, longitude, accuracy } = position.coords;
+      const newLocation = [latitude, longitude];
+      const timestamp = Date.now();
 
-        console.log(`Location update: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}, accuracy: ${accuracy}m`);
+      console.log(`Location update: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}, accuracy: ${accuracy}m`);
 
-        // Filter out obviously bad readings
-        if (accuracy > 1000) {
-          console.warn("Location accuracy too poor, ignoring:", accuracy);
-          return;
-        }
+      // Less restrictive accuracy filtering
+      if (accuracy > 500) { // Increased from 1000 to be less restrictive
+        console.warn("Location accuracy too poor, ignoring:", accuracy);
+        return;
+      }
 
-        // For iOS, be more selective about location updates
-        if (isIOS && accuracy > 100 && userLocation) {
-          const distance = getDistance(userLocation, newLocation);
-          if (distance < accuracy / 2) {
-            console.log("iOS: Ignoring location update due to poor accuracy vs distance");
-            return;
-          }
-        }
-
-        // Check if this is a significant location change
-        const previousLocation = userLocation;
-        if (previousLocation) {
-          const distance = getDistance(previousLocation, newLocation);
-          const minDistance = Math.max(accuracy / 3, 5); // Dynamic minimum distance based on accuracy
-          
-          if (distance < minDistance && accuracy > 20) {
-            console.log(`Location change too small (${distance.toFixed(1)}m), ignoring`);
-            return;
-          }
-        }
-
-        setUserLocation(newLocation);
-        setLocationAccuracy(accuracy);
-        setLastLocationUpdate(timestamp);
-        
-        // Sync with service worker
-        syncLocationWithServiceWorker(newLocation);
-
-        // If accuracy is poor, try to get a better reading
-        if (accuracy > 50 && highAccuracyMode) {
-          console.log("Poor accuracy, requesting high-accuracy location");
-          navigator.geolocation.getCurrentPosition(
-            (betterPosition) => {
-              if (betterPosition.coords.accuracy < accuracy) {
-                const betterLocation = [
-                  betterPosition.coords.latitude,
-                  betterPosition.coords.longitude
-                ];
-                setUserLocation(betterLocation);
-                setLocationAccuracy(betterPosition.coords.accuracy);
-                syncLocationWithServiceWorker(betterLocation);
-              }
-            },
-            () => {}, // Ignore errors for this backup request
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-          );
-        }
-      },
-      (error) => {
-        console.error("Location tracking error:", error);
-        
-        // Try fallback with different options
-        if (error.code === error.TIMEOUT && highAccuracyMode) {
-          console.log("High accuracy timed out, trying with lower accuracy");
-          setHighAccuracyMode(false);
-          // Restart with lower accuracy
-          setTimeout(() => {
-            setHighAccuracyMode(true);
+      // Update location state
+      setUserLocation(newLocation);
+      setLocationAccuracy(accuracy);
+      setLastLocationUpdate(timestamp);
+      setIsTracking(true); // Ensure tracking state is set
+      
+      // Sync with service worker
+      syncLocationWithServiceWorker(newLocation);
+    },
+    (error) => {
+      console.error("Location tracking error:", error);
+      setIsTracking(false);
+      
+      // More aggressive retry logic
+      if (error.code === error.TIMEOUT) {
+        console.log("Location timeout, retrying in 5 seconds...");
+        setTimeout(() => {
+          if (backgroundTrackingEnabled) {
             startContinuousLocationTracking();
-          }, 2000);
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          // Try one-time location request
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const newLocation = [
-                position.coords.latitude,
-                position.coords.longitude,
-              ];
-              setUserLocation(newLocation);
-              setLocationAccuracy(position.coords.accuracy);
-              setLastLocationUpdate(Date.now());
-            },
-            () => {},
-            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-          );
-        }
-      },
-      options
-    );
+          }
+        }, 5000);
+      }
+    },
+    options
+  );
 
-    setLocationWatchId(watchId);
-    setIsTracking(true);
-  }, [highAccuracyMode, userLocation, locationWatchId, isIOS]);
+  setLocationWatchId(watchId);
+  setIsTracking(true);
+}, [highAccuracyMode, isIOS, backgroundTrackingEnabled]);
 
   const stopContinuousLocationTracking = useCallback(() => {
     if (locationWatchId) {
@@ -276,9 +248,10 @@ export default function GeoAlarmApp() {
   useEffect(() => {
     if (!navigator.geolocation) return;
 
-    if (backgroundTrackingEnabled && !locationWatchId) {
+    // Only start tracking when backgroundTrackingEnabled changes to true
+    if (backgroundTrackingEnabled && !isTracking) {
       startContinuousLocationTracking();
-    } else if (!backgroundTrackingEnabled && locationWatchId) {
+    } else if (!backgroundTrackingEnabled && isTracking) {
       stopContinuousLocationTracking();
     }
 
@@ -287,7 +260,7 @@ export default function GeoAlarmApp() {
         navigator.geolocation.clearWatch(locationWatchId);
       }
     };
-  }, [backgroundTrackingEnabled, startContinuousLocationTracking, stopContinuousLocationTracking]);
+  }, [backgroundTrackingEnabled]);
 
   const syncLocationWithServiceWorker = (location) => {
     if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
@@ -296,6 +269,42 @@ export default function GeoAlarmApp() {
         data: { location, timestamp: Date.now() },
       });
     }
+  };
+
+  const refreshLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by this browser.");
+      return;
+    }
+
+    console.log("Manually refreshing location...");
+    setIsRefreshing(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const newLocation = [position.coords.latitude, position.coords.longitude];
+        console.log("Manual location update:", newLocation);
+        setUserLocation(newLocation);
+        setLocationAccuracy(position.coords.accuracy);
+        setLastLocationUpdate(Date.now());
+        setIsRefreshing(false);
+        
+        // Visual feedback for mobile users
+        if (isMobile && "vibrate" in navigator) {
+          navigator.vibrate([50, 50, 50]);
+        }
+      },
+      (error) => {
+        console.error("Manual location refresh failed:", error);
+        setIsRefreshing(false);
+        alert(`Location error: ${error.message}`);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
   };
 
   // Load saved data on mount
@@ -425,14 +434,20 @@ export default function GeoAlarmApp() {
       icon: createUserLocationIcon(),
     }).addTo(map);
 
-    const accuracyText = locationAccuracy ? ` (±${Math.round(locationAccuracy)}m)` : '';
+    const accuracyText = locationAccuracy
+      ? ` (±${Math.round(locationAccuracy)}m)`
+      : "";
     newUserMarker.bindPopup(`Your current location${accuracyText}`);
     setUserMarker(newUserMarker);
-    
+
     // Only pan to user location if it's a significant change or first time
     const currentCenter = map.getCenter();
-    const distance = getDistance([currentCenter.lat, currentCenter.lng], userLocation);
-    if (distance > 100) { // Only pan if more than 100m away
+    const distance = getDistance(
+      [currentCenter.lat, currentCenter.lng],
+      userLocation
+    );
+    if (distance > 100) {
+      // Only pan if more than 100m away
       map.setView(userLocation, Math.max(map.getZoom(), 15));
     }
   }, [userLocation, map, locationAccuracy]);
@@ -451,7 +466,9 @@ export default function GeoAlarmApp() {
         icon: createAlarmIcon(alarm.triggered),
       }).addTo(map);
 
-      const distance = userLocation ? Math.round(getDistance(userLocation, alarm.location)) : 'Unknown';
+      const distance = userLocation
+        ? Math.round(getDistance(userLocation, alarm.location))
+        : "Unknown";
       marker.bindPopup(`
         <div>
           <strong>${alarm.name}</strong><br/>
@@ -480,7 +497,7 @@ export default function GeoAlarmApp() {
     if (!userLocation || !Array.isArray(alarms) || alarms.length === 0) return;
 
     const now = Date.now();
-    
+
     // Throttle trigger checks (max once per 2 seconds)
     if (now - lastTriggerCheckRef.current < 2000) {
       return;
@@ -513,7 +530,10 @@ export default function GeoAlarmApp() {
             }
             console.log("Expired alarms cleaned from storage");
           } catch (error) {
-            console.error("Failed to clean expired alarms from storage:", error);
+            console.error(
+              "Failed to clean expired alarms from storage:",
+              error
+            );
           }
         }, 100);
         return;
@@ -529,14 +549,20 @@ export default function GeoAlarmApp() {
         ) {
           const distance = getDistance(userLocation, alarm.location);
           const alarmKey = `${alarm.createdAt}-${index}`;
-          
+
           // Dynamic trigger radius based on location accuracy
           const baseRadius = alarm.radius;
-          const accuracyBuffer = locationAccuracy ? Math.min(locationAccuracy * 0.5, 20) : 10;
+          const accuracyBuffer = locationAccuracy
+            ? Math.min(locationAccuracy * 0.5, 20)
+            : 10;
           const triggerRadius = baseRadius + accuracyBuffer;
 
           console.log(
-            `Alarm "${alarm.name}": distance=${distance.toFixed(1)}m, trigger=${triggerRadius.toFixed(1)}m, accuracy=${locationAccuracy || 'unknown'}m`
+            `Alarm "${alarm.name}": distance=${distance.toFixed(
+              1
+            )}m, trigger=${triggerRadius.toFixed(1)}m, accuracy=${
+              locationAccuracy || "unknown"
+            }m`
           );
 
           if (distance <= triggerRadius) {
@@ -547,8 +573,12 @@ export default function GeoAlarmApp() {
 
             // Add to triggered set to prevent duplicates
             triggeredAlarmsRef.current.add(alarmKey);
-            
-            console.log(`Triggering alarm: ${alarm.name} (distance: ${distance.toFixed(1)}m)`);
+
+            console.log(
+              `Triggering alarm: ${alarm.name} (distance: ${distance.toFixed(
+                1
+              )}m)`
+            );
             triggerAlarm(index);
 
             // Remove from triggered set after 10 seconds
@@ -658,10 +688,10 @@ export default function GeoAlarmApp() {
           try {
             setAlarms((prevAlarms) => {
               const newAlarms = prevAlarms.filter((_, i) => i !== index);
-              
+
               // Save to database asynchronously
               database.saveAlarms(newAlarms).catch(console.error);
-              
+
               // Sync with service worker
               if (
                 "serviceWorker" in navigator &&
@@ -672,7 +702,7 @@ export default function GeoAlarmApp() {
                   data: { alarms: newAlarms },
                 });
               }
-              
+
               return newAlarms;
             });
 
@@ -721,14 +751,19 @@ export default function GeoAlarmApp() {
     if (!map || !e.latlng) return;
     const { lat, lng } = e.latlng;
     const location = [lat, lng];
-    const name = prompt("Enter alarm name:", `Alarm at ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+    const name = prompt(
+      "Enter alarm name:",
+      `Alarm at ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+    );
     if (!name) return;
     const radiusInput = prompt("Enter radius in meters (default: 100):");
     const radius = parseInt(radiusInput) || 100;
     const alarmType = confirm(
       "One-time use alarm? (OK = Yes, Cancel = Persistent)"
-    ) ? "oneTime" : "persistent";
-    
+    )
+      ? "oneTime"
+      : "persistent";
+
     let expiresAt = null;
     if (alarmType === "persistent") {
       const hours = prompt(
@@ -736,10 +771,12 @@ export default function GeoAlarmApp() {
       );
       const hoursNum = parseInt(hours);
       if (hoursNum && hoursNum > 0) {
-        expiresAt = new Date(Date.now() + hoursNum * 60 * 60 * 1000).toISOString();
+        expiresAt = new Date(
+          Date.now() + hoursNum * 60 * 60 * 1000
+        ).toISOString();
       }
     }
-    
+
     const newAlarm = {
       name,
       location,
@@ -749,9 +786,9 @@ export default function GeoAlarmApp() {
       type: alarmType,
       expiresAt: expiresAt,
     };
-    
+
     setAlarms((prev) => [...prev, newAlarm]);
-    
+
     setTimeout(() => {
       if (map) {
         map.setView(location, 16);
@@ -764,24 +801,21 @@ export default function GeoAlarmApp() {
     if (index < 0 || index >= alarms.length) {
       return;
     }
-    
+
     const alarm = alarms[index];
     if (!alarm) return;
-    
+
     const confirmDelete = confirm(
       `Are you sure you want to delete the alarm: ${alarm.name}?`
     );
     if (!confirmDelete) return;
-    
+
     const newAlarms = alarms.filter((_, i) => i !== index);
     setAlarms(newAlarms);
-    
+
     try {
       await database.saveAlarms(newAlarms);
-      if (
-        "serviceWorker" in navigator &&
-        navigator.serviceWorker.controller
-      ) {
+      if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
           type: "SYNC_ALARMS",
           data: { alarms: newAlarms },
@@ -794,18 +828,30 @@ export default function GeoAlarmApp() {
   };
 
   const handleRequestLocation = () => {
-    requestLocationAccess(
-      setIsTracking, 
-      (location) => {
-        setUserLocation(location);
-        // Start continuous tracking after initial location
-        setTimeout(() => {
-          setBackgroundTrackingEnabled(true);
-        }, 1000);
-      }, 
-      () => setIsTracking(false)
-    );
-  };
+  // First get current location
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const newLocation = [position.coords.latitude, position.coords.longitude];
+      setUserLocation(newLocation);
+      setLocationAccuracy(position.coords.accuracy);
+      setLastLocationUpdate(Date.now());
+      setIsTracking(true);
+      
+      // Then start continuous tracking
+      setBackgroundTrackingEnabled(true);
+    },
+    (error) => {
+      console.error("Failed to get initial location:", error);
+      setIsTracking(false);
+      alert("Failed to get your location. Please check your browser settings.");
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    }
+  );
+};
 
   const toggleBackgroundTracking = () => {
     setBackgroundTrackingEnabled(!backgroundTrackingEnabled);
@@ -827,13 +873,16 @@ export default function GeoAlarmApp() {
         }
 
         // Test audio with platform-specific delay
-        setTimeout(async () => {
-          try {
-            await playVoiceAlert("Audio is now ready");
-          } catch (error) {
-            console.error("Test audio failed:", error);
-          }
-        }, isIOS ? 300 : 200);
+        setTimeout(
+          async () => {
+            try {
+              await playVoiceAlert("Audio is now ready");
+            } catch (error) {
+              console.error("Test audio failed:", error);
+            }
+          },
+          isIOS ? 300 : 200
+        );
       } else {
         console.warn("Audio initialization failed");
         alert(
@@ -886,7 +935,9 @@ export default function GeoAlarmApp() {
 
           const alarmType = confirm(
             "One-time use alarm? (OK = Yes, Cancel = Persistent)"
-          ) ? "oneTime" : "persistent";
+          )
+            ? "oneTime"
+            : "persistent";
 
           let expiresAt = null;
           if (alarmType === "persistent") {
@@ -939,6 +990,44 @@ export default function GeoAlarmApp() {
     }
   };
 
+  const renderLocationStatus = () => {
+  const timeSinceUpdate = lastLocationUpdate 
+    ? Math.round((Date.now() - lastLocationUpdate) / 1000)
+    : null;
+
+  return (
+    <div className="statusSection">
+      <div className={`statusIndicator ${isTracking ? "active" : "inactive"}`}>
+        <div className="statusDot"></div>
+        <span>
+          {isTracking ? "Location tracking active" : "Location tracking disabled"}
+          {lastLocationUpdate && (
+            <small> • Last update: {timeSinceUpdate}s ago</small>
+          )}
+          {locationAccuracy && (
+            <small> • Accuracy: ±{Math.round(locationAccuracy)}m</small>
+          )}
+          {locationWatchId && (
+            <small> • Watch ID: {locationWatchId}</small>
+          )}
+        </span>
+      </div>
+      
+      {/* Add manual refresh button for testing */}
+      <button onClick={refreshLocation} className="locationBtn">
+        🔄 Refresh Location
+      </button>
+      
+      {/* Debug info */}
+      {userLocation && (
+        <small style={{ opacity: 0.7, fontSize: '12px' }}>
+          Current: {userLocation[0].toFixed(6)}, {userLocation[1].toFixed(6)}
+        </small>
+      )}
+    </div>
+  );
+};
+
   const renderDesktopSidebar = () => (
     <div className="sidebar">
       {/* Desktop Header */}
@@ -950,9 +1039,7 @@ export default function GeoAlarmApp() {
         <div className="headerControls">
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`controlBtn ${
-              soundEnabled ? "active" : ""
-            }`}
+            className={`controlBtn ${soundEnabled ? "active" : ""}`}
             title="Toggle Sound"
           >
             🔊
@@ -1044,9 +1131,7 @@ export default function GeoAlarmApp() {
       {/* Desktop Status */}
       <div className="statusSection">
         <div
-          className={`statusIndicator ${
-            isTracking ? "active" : "inactive"
-          }`}
+          className={`statusIndicator ${isTracking ? "active" : "inactive"}`}
         >
           <div className="statusDot"></div>
           <span>
@@ -1067,10 +1152,7 @@ export default function GeoAlarmApp() {
         </div>
 
         {!isTracking && (
-          <button
-            onClick={handleRequestLocation}
-            className="locationBtn"
-          >
+          <button onClick={handleRequestLocation} className="locationBtn">
             📍 Enable Location
           </button>
         )}
@@ -1110,6 +1192,15 @@ export default function GeoAlarmApp() {
           </label>
           <small>Uses more battery but more precise location</small>
         </div>
+
+        {/* Desktop Refresh Location Button */}
+        <button 
+          onClick={refreshLocation} 
+          className={`locationBtn ${isRefreshing ? "refreshing" : ""}`}
+          disabled={isRefreshing}
+        >
+          {isRefreshing ? "🔄 Refreshing..." : "🔄 Refresh Location"}
+        </button>
       </div>
 
       {/* Desktop Alarms */}
@@ -1128,9 +1219,7 @@ export default function GeoAlarmApp() {
           {alarms.map((alarm, i) => (
             <div
               key={i}
-              className={`alarmCard ${
-                alarm.triggered ? "triggered" : ""
-              }`}
+              className={`alarmCard ${alarm.triggered ? "triggered" : ""}`}
             >
               <div className="alarmInfo">
                 <div className="alarmHeader">
@@ -1151,9 +1240,7 @@ export default function GeoAlarmApp() {
                   </p>
                   <p
                     className={`alarmType ${
-                      alarm.type === "oneTime"
-                        ? "oneTime"
-                        : "persistent"
+                      alarm.type === "oneTime" ? "oneTime" : "persistent"
                     }`}
                   >
                     {alarm.type === "oneTime"
@@ -1166,7 +1253,9 @@ export default function GeoAlarmApp() {
                     </p>
                   )}
                   {alarm.triggered && (
-                    <p className="triggeredStatus">🚨 TRIGGERED (auto-reset in 3s)</p>
+                    <p className="triggeredStatus">
+                      🚨 TRIGGERED (auto-reset in 3s)
+                    </p>
                   )}
                   {userLocation && (
                     <p className="distance">
@@ -1179,10 +1268,7 @@ export default function GeoAlarmApp() {
 
               <div className="alarmActions">
                 {alarm.triggered && (
-                  <button
-                    onClick={() => resetAlarm(i)}
-                    className="resetBtn"
-                  >
+                  <button onClick={() => resetAlarm(i)} className="resetBtn">
                     Reset Now
                   </button>
                 )}
@@ -1216,8 +1302,11 @@ export default function GeoAlarmApp() {
           find locations
         </p>
         {isIOS && (
-          <small style={{ color: '#f59e0b', marginTop: '8px', display: 'block' }}>
-            📱 iOS detected - For best results, keep app open and allow location access
+          <small
+            style={{ color: "#f59e0b", marginTop: "8px", display: "block" }}
+          >
+            📱 iOS detected - For best results, keep app open and allow location
+            access
           </small>
         )}
       </div>
@@ -1241,9 +1330,7 @@ export default function GeoAlarmApp() {
             <button
               type="submit"
               disabled={isSearching || !searchQuery.trim()}
-              className={`mobileSearchBtn ${
-                isSearching ? "loading" : ""
-              }`}
+              className={`mobileSearchBtn ${isSearching ? "loading" : ""}`}
             >
               {isSearching ? "🔄" : "🔍"}
             </button>
@@ -1253,9 +1340,7 @@ export default function GeoAlarmApp() {
         <div className="mobileTopControls">
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`mobileControlBtn ${
-              soundEnabled ? "active" : ""
-            }`}
+            className={`mobileControlBtn ${soundEnabled ? "active" : ""}`}
             title="Toggle Sound"
           >
             🔊
@@ -1273,9 +1358,7 @@ export default function GeoAlarmApp() {
       {/* Mobile Search Results */}
       {showSearchResults && (
         <div
-          className={`mobileSearchResults ${
-            showSearchResults ? "show" : ""
-          }`}
+          className={`mobileSearchResults ${showSearchResults ? "show" : ""}`}
         >
           {searchResults.length > 0 ? (
             <>
@@ -1328,24 +1411,15 @@ export default function GeoAlarmApp() {
 
       {/* Mobile Bottom Sheet */}
       <div
-        className={`mobileBottomSheet ${
-          bottomSheetExpanded ? "expanded" : ""
-        }`}
+        className={`mobileBottomSheet ${bottomSheetExpanded ? "expanded" : ""}`}
       >
-        <div
-          className="bottomSheetHandle"
-          onClick={toggleBottomSheet}
-        ></div>
+        <div className="bottomSheetHandle" onClick={toggleBottomSheet}></div>
 
         <div className="bottomSheetHeader" onClick={toggleBottomSheet}>
           <h2 className="bottomSheetTitle">
             🧭 GeoAlarm
             <span className="bottomSheetStatus">
-              <div
-                className={`statusDot ${
-                  isTracking ? "active" : ""
-                }`}
-              ></div>
+              <div className={`statusDot ${isTracking ? "active" : ""}`}></div>
               {isTracking ? "Active" : "Inactive"} • {alarms.length} alarms
               {locationAccuracy && ` • ±${Math.round(locationAccuracy)}m`}
             </span>
@@ -1389,9 +1463,7 @@ export default function GeoAlarmApp() {
               </button>
             ) : (
               <div
-                className={`quickActionBtn ${
-                  audioInitialized ? "active" : ""
-                }`}
+                className={`quickActionBtn ${audioInitialized ? "active" : ""}`}
               >
                 <div className="quickActionIcon">
                   {audioInitialized ? "🔊" : "🔇"}
@@ -1401,19 +1473,36 @@ export default function GeoAlarmApp() {
                 </div>
               </div>
             )}
+
+            {/* Mobile Refresh Location Button */}
+            <button
+              onClick={refreshLocation}
+              className={`quickActionBtn ${isRefreshing ? "refreshing" : ""}`}
+              disabled={isRefreshing}
+            >
+              <div className="quickActionIcon">
+                {isRefreshing ? "🔄" : "🔄"}
+              </div>
+              <div className="quickActionLabel">
+                {isRefreshing ? "Refreshing..." : "Refresh Location"}
+              </div>
+            </button>
           </div>
 
           {isIOS && (
-            <div style={{ 
-              background: '#f59e0b20', 
-              border: '1px solid #f59e0b', 
-              borderRadius: '8px', 
-              padding: '12px', 
-              margin: '12px 0',
-              fontSize: '14px'
-            }}>
-              📱 <strong>iOS Tips:</strong> Keep app open for best location tracking. 
-              Enable location permissions and disable low power mode for accurate alerts.
+            <div
+              style={{
+                background: "#f59e0b20",
+                border: "1px solid #f59e0b",
+                borderRadius: "8px",
+                padding: "12px",
+                margin: "12px 0",
+                fontSize: "14px",
+              }}
+            >
+              📱 <strong>iOS Tips:</strong> Keep app open for best location
+              tracking. Enable location permissions and disable low power mode
+              for accurate alerts.
             </div>
           )}
 
@@ -1475,9 +1564,7 @@ export default function GeoAlarmApp() {
 
           {/* Mobile Alarms */}
           <div className="alarmsSection">
-            <h2 className="sectionTitle">
-              🔔 My Alarms ({alarms.length})
-            </h2>
+            <h2 className="sectionTitle">🔔 My Alarms ({alarms.length})</h2>
 
             {alarms.length === 0 && (
               <div className="emptyState">
@@ -1491,9 +1578,7 @@ export default function GeoAlarmApp() {
               {alarms.map((alarm, i) => (
                 <div
                   key={i}
-                  className={`alarmCard ${
-                    alarm.triggered ? "triggered" : ""
-                  }`}
+                  className={`alarmCard ${alarm.triggered ? "triggered" : ""}`}
                 >
                   <div className="alarmInfo">
                     <div className="alarmHeader">
@@ -1514,9 +1599,7 @@ export default function GeoAlarmApp() {
                       </p>
                       <p
                         className={`alarmType ${
-                          alarm.type === "oneTime"
-                            ? "oneTime"
-                            : "persistent"
+                          alarm.type === "oneTime" ? "oneTime" : "persistent"
                         }`}
                       >
                         {alarm.type === "oneTime"
@@ -1530,7 +1613,9 @@ export default function GeoAlarmApp() {
                         </p>
                       )}
                       {alarm.triggered && (
-                        <p className="triggeredStatus">🚨 TRIGGERED (auto-reset in 3s)</p>
+                        <p className="triggeredStatus">
+                          🚨 TRIGGERED (auto-reset in 3s)
+                        </p>
                       )}
                       {userLocation && (
                         <p className="distance">
